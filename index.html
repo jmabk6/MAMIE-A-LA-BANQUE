@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f5f67" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Mamie à la banque" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="style.css" />
+  <title>Mamie à la banque</title>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">Septembre 2026</div>
+        <h1>Mamie à la banque</h1>
+      </div>
+      <button class="icon-btn" id="seedBtn" aria-label="Charger des données d'exemple">↻</button>
+    </header>
+
+    <main id="app"></main>
+
+    <nav class="bottom-nav">
+      <button data-view="home" class="nav-btn active"><span>⌂</span><small>Accueil</small></button>
+      <button data-view="expenses" class="nav-btn"><span>−</span><small>Dépenses</small></button>
+      <button data-view="statement" class="nav-btn"><span>✓</span><small>Relevé</small></button>
+      <button data-view="search" class="nav-btn"><span>⌕</span><small>Recherche</small></button>
+      <button data-view="settings" class="nav-btn"><span>⚙</span><small>Réglages</small></button>
+    </nav>
+  </div>
+
+  <template id="transaction-form-template">
+    <form id="transactionForm" class="card form-card">
+      <div class="segmented" id="typeSegment">
+        <button type="button" data-type="depense" class="active">Dépense</button>
+        <button type="button" data-type="recette">Recette</button>
+        <button type="button" data-type="prelevement">Prélèvement</button>
+      </div>
+      <input type="hidden" id="type" value="depense" />
+      <label>Date<input id="date" type="date" required /></label>
+      <label>Enseigne / Libellé<input id="label" type="text" placeholder="Carrefour, EDF…" required /></label>
+      <label>Montant TTC<input id="amount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0,00" required /></label>
+      <label>Mode de paiement
+        <select id="payment">
+          <option>Carte bancaire</option>
+          <option>Prélèvement</option>
+          <option>Virement</option>
+          <option>Espèces</option>
+          <option>Chèque</option>
+        </select>
+      </label>
+      <label class="check-row"><input id="unknown" type="checkbox" /> Ajouté depuis le relevé / inconnu</label>
+      <button class="primary" type="submit">Enregistrer</button>
+    </form>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
