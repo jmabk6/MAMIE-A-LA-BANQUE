@@ -162,54 +162,24 @@ textarea {
   margin:10px 0 0 !important;
 }
 
-
-/* Recherche iPhone : 2 colonnes strictement identiques, y compris pour les dates */
+/* Recherche : toutes les cases ont exactement la même largeur */
 .filters{
+  display:grid !important;
   grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important;
+  gap:8px !important;
   width:100% !important;
 }
-.filters > *{
-  min-width:0 !important;
-  width:100% !important;
-  max-width:100% !important;
-}
-.date-filter{
-  position:relative;
-  min-width:0 !important;
-  width:100% !important;
-  max-width:100% !important;
-}
-.date-filter input[type="date"]{
-  display:block;
+.filters > input,
+.filters > select{
+  display:block !important;
   width:100% !important;
   min-width:0 !important;
   max-width:100% !important;
-  height:auto !important;
   margin:0 !important;
+  box-sizing:border-box !important;
   padding:11px !important;
   border:1px solid var(--line) !important;
   border-radius:10px !important;
   background:#fff !important;
-  box-sizing:border-box !important;
   font-size:16px !important;
-  -webkit-appearance:none;
-  appearance:none;
-}
-.date-filter::before{
-  content:attr(data-placeholder);
-  position:absolute;
-  left:11px;
-  top:50%;
-  transform:translateY(-50%);
-  color:var(--muted);
-  font-size:16px;
-  font-weight:400;
-  pointer-events:none;
-  z-index:2;
-  background:#fff;
-  padding-right:4px;
-}
-.date-filter.is-focus::before,
-.date-filter.has-value::before{
-  display:none;
 }

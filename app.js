@@ -361,8 +361,8 @@ function searchView(){
         </select>
         <input id="minFilter" type="number" step="0.01" placeholder="Montant min." />
         <input id="maxFilter" type="number" step="0.01" placeholder="Montant max." />
-        <div class="date-filter" data-placeholder="Du"><input id="fromFilter" type="date" /></div>
-        <div class="date-filter" data-placeholder="Au"><input id="toFilter" type="date" /></div>
+        <input id="fromFilter" type="text" inputmode="numeric" placeholder="Du (JJ/MM/AAAA)" autocomplete="off" />
+        <input id="toFilter" type="text" inputmode="numeric" placeholder="Au (JJ/MM/AAAA)" autocomplete="off" />
       </div>
     </div>
     <div id="searchResults">${renderTxList(state.transactions)}</div>
@@ -570,16 +570,6 @@ function bind(){
     };
   }
 
-  document.querySelectorAll(".date-filter input[type=\"date\"]").forEach(input=>{
-    const wrap=input.closest(".date-filter");
-    const sync=()=>wrap.classList.toggle("has-value", !!input.value);
-    input.addEventListener("focus",()=>wrap.classList.add("is-focus"));
-    input.addEventListener("blur",()=>{wrap.classList.remove("is-focus"); sync();});
-    input.addEventListener("input",sync);
-    input.addEventListener("change",sync);
-    sync();
-  });
-
   const q=document.getElementById("q");
   if(q){
     ["q","typeFilter","payFilter","minFilter","maxFilter","fromFilter","toFilter"].forEach(id=>{
@@ -622,19 +612,30 @@ function generateRecurringForMonth(){
   render("home");
 }
 
+function frDateToIso(value){
+  const v=String(value||"").trim();
+  if(!v) return "";
+  const m=v.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if(!m) return null;
+  const d=Number(m[1]), mo=Number(m[2]), y=Number(m[3]);
+  const dt=new Date(y,mo-1,d);
+  if(dt.getFullYear()!==y || dt.getMonth()!==mo-1 || dt.getDate()!==d) return null;
+  return `${y}-${String(mo).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+}
+
 function applySearch(){
   const q=document.getElementById("q").value.trim().toLowerCase();
   const t=document.getElementById("typeFilter").value;
   const p=document.getElementById("payFilter").value;
   const min=parseFloat(document.getElementById("minFilter").value);
   const max=parseFloat(document.getElementById("maxFilter").value);
-  const from=document.getElementById("fromFilter").value;
-  const to=document.getElementById("toFilter").value;
+  const from=frDateToIso(document.getElementById("fromFilter").value);
+  const to=frDateToIso(document.getElementById("toFilter").value);
   const list=state.transactions.filter(x=>{
     const matchesQ=!q || x.label.toLowerCase().includes(q) || String(x.amount).replace(".",",").includes(q) || String(x.amount).includes(q);
     return matchesQ && (!t||x.type===t) && (!p||x.payment===p) &&
       (isNaN(min)||x.amount>=min) && (isNaN(max)||x.amount<=max) &&
-      (!from||x.date>=from) && (!to||x.date<=to);
+      (from===null || !from || x.date>=from) && (to===null || !to || x.date<=to);
   });
   document.getElementById("searchResults").innerHTML=renderTxList(list);
 }
