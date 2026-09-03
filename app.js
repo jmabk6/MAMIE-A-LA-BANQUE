@@ -267,17 +267,101 @@ function renderTxList(list){
     </div>`).join("")}</div>`;
 }
 
+
+function isLegacyDemoRecurring(r){
+  const demos=[
+    [101,"recette","Pension retraite",2100],
+    [102,"recette","Pension de réversion",620],
+    [201,"prelevement","EDF",57.90],
+    [202,"prelevement","Mutuelle",78.50],
+    [203,"prelevement","Téléphone",25.99],
+    [204,"prelevement","Assurance habitation",19.90]
+  ];
+  return demos.some(([id,type,label,amount]) =>
+    Number(r.id)===id &&
+    r.type===type &&
+    r.label===label &&
+    Math.abs(Number(r.amount)-amount)<0.001
+  );
+}
+
+function isLegacyDemoTransaction(t){
+  const demos=[
+    [1,"2026-09-01","Pension retraite","recette",2100],
+    [2,"2026-09-02","Carrefour","depense",45.62],
+    [3,"2026-09-05","Mutuelle","prelevement",78.50],
+    [4,"2026-09-05","EDF","prelevement",57.90],
+    [5,"2026-09-06","Pharmacie","depense",23.80],
+    [6,"2026-09-07","PRLV SEPA XYZ","prelevement",37.90]
+  ];
+  return demos.some(([id,date,label,type,amount]) =>
+    Number(t.id)===id &&
+    t.date===date &&
+    t.label===label &&
+    t.type===type &&
+    Math.abs(Number(t.amount)-amount)<0.001
+  );
+}
+
+function currentMonthContext(){
+  const now=new Date();
+  const y=now.getFullYear();
+  const m=now.getMonth();
+  const prefix=`${y}-${String(m+1).padStart(2,"0")}`;
+  const monthTx=state.transactions.filter(t =>
+    !isLegacyDemoTransaction(t) &&
+    typeof t.date==="string" &&
+    t.date.slice(0,7)===prefix
+  );
+  const recurring=state.recurring.filter(r=>!isLegacyDemoRecurring(r));
+  return {y,m,prefix,monthTx,recurring};
+}
+
+function actualOrExpectedRecurringAmount(r, monthTx){
+  const actual=monthTx.filter(t=>Number(t.recurringId)===Number(r.id) && t.type===r.type);
+  if(actual.length) return actual.reduce((s,t)=>s+(Number(t.amount)||0),0);
+  return Number(r.amount)||0;
+}
+
 function homeView(){
-  const rec = state.transactions.filter(x=>x.type==="recette").reduce((s,x)=>s+x.amount,0);
-  const dep = state.transactions.filter(x=>x.type==="depense").reduce((s,x)=>s+x.amount,0);
-  const pre = state.transactions.filter(x=>x.type==="prelevement").reduce((s,x)=>s+x.amount,0);
-  const provisions = state.recurring.filter(r=>r.type==="prelevement").reduce((s,r)=>s+monthlyProvision(r),0);
-  const available = rec-dep-pre-provisions;
+  const {m,monthTx,recurring}=currentMonthContext();
+
+  const recurringRecettes=recurring.filter(r=>r.type==="recette" && monthApplies(r,m));
+  const recurringPrelevements=recurring.filter(r=>r.type==="prelevement" && monthApplies(r,m));
+
+  const linkedRecurringIds=new Set(recurring.map(r=>Number(r.id)));
+  const extraRecettes=monthTx.filter(t=>t.type==="recette" && !linkedRecurringIds.has(Number(t.recurringId)));
+  const extraPrelevements=monthTx.filter(t=>t.type==="prelevement" && !linkedRecurringIds.has(Number(t.recurringId)));
+
+  const rec =
+    recurringRecettes.reduce((s,r)=>s+actualOrExpectedRecurringAmount(r,monthTx),0) +
+    extraRecettes.reduce((s,t)=>s+(Number(t.amount)||0),0);
+
+  const dep=monthTx
+    .filter(t=>t.type==="depense")
+    .reduce((s,t)=>s+(Number(t.amount)||0),0);
+
+  const pre =
+    recurringPrelevements.reduce((s,r)=>s+actualOrExpectedRecurringAmount(r,monthTx),0) +
+    extraPrelevements.reduce((s,t)=>s+(Number(t.amount)||0),0);
+
+  const monthlyPreBudget =
+    recurring
+      .filter(r=>r.type==="prelevement" && (r.frequency||"monthly")==="monthly")
+      .reduce((s,r)=>s+actualOrExpectedRecurringAmount(r,monthTx),0) +
+    extraPrelevements.reduce((s,t)=>s+(Number(t.amount)||0),0);
+
+  const provisions=recurring
+    .filter(r=>r.type==="prelevement")
+    .reduce((s,r)=>s+monthlyProvision(r),0);
+
+  const available=rec-dep-monthlyPreBudget-provisions;
+
   return `
     <section class="hero card">
       <small>Disponible à dépenser</small>
       <div class="balance">${euro(available)}</div>
-      <div class="meta" style="color:#d7efef">Après dépenses, prélèvements et provisions futures</div>
+      <div class="meta" style="color:#d7efef">Recettes du mois − dépenses − prélèvements mensuels − provisions</div>
     </section>
     <section class="grid">
       <div class="stat"><small>Recettes</small><strong class="green">${euro(rec)}</strong></div>
@@ -289,16 +373,17 @@ function homeView(){
       <div class="meta">Pour préparer les prélèvements trimestriels, semestriels, annuels ou personnalisés.</div>
     </section>
     <button class="fab" id="addBtn">+ Ajouter une dépense</button>
-    <section class="section-title"><h2>Dernières opérations</h2><button class="link-btn" data-jump="search">Voir tout</button></section>
-    ${renderTxList(sortedTx().slice(0,5))}
+    <section class="section-title"><h2>Dernières opérations du mois</h2><button class="link-btn" data-jump="search">Voir tout</button></section>
+    ${renderTxList(sortedTx(monthTx).slice(0,5))}
   `;
 }
 
 function expensesView(){
+  const {monthTx}=currentMonthContext();
   return `
     <section class="section-title"><h2>Dépenses du mois</h2></section>
     <button class="fab" id="addBtn">+ Ajouter une dépense</button>
-    ${renderTxList(state.transactions.filter(x=>x.type==="depense"))}
+    ${renderTxList(monthTx.filter(x=>x.type==="depense"))}
   `;
 }
 
