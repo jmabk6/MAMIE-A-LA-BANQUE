@@ -2,12 +2,12 @@
 const STORAGE_KEY = "mamie-banque-v2";
 
 const demoRecurring = [
-  {id:101, type:"recette", label:"Pension retraite", amount:2100, day:1, payment:"Virement"},
-  {id:102, type:"recette", label:"Pension de réversion", amount:620, day:28, payment:"Virement"},
-  {id:201, type:"prelevement", label:"EDF", amount:57.90, day:5, payment:"Prélèvement"},
-  {id:202, type:"prelevement", label:"Mutuelle", amount:78.50, day:5, payment:"Prélèvement"},
-  {id:203, type:"prelevement", label:"Téléphone", amount:25.99, day:15, payment:"Prélèvement"},
-  {id:204, type:"prelevement", label:"Assurance habitation", amount:19.90, day:10, payment:"Prélèvement"}
+  {id:101, type:"recette", label:"Pension retraite", amount:2100, day:1, payment:"Virement", frequency:"monthly", months:[]},
+  {id:102, type:"recette", label:"Pension de réversion", amount:620, day:28, payment:"Virement", frequency:"monthly", months:[]},
+  {id:201, type:"prelevement", label:"EDF", amount:57.90, day:5, payment:"Prélèvement", frequency:"monthly", months:[]},
+  {id:202, type:"prelevement", label:"Mutuelle", amount:78.50, day:5, payment:"Prélèvement", frequency:"monthly", months:[]},
+  {id:203, type:"prelevement", label:"Téléphone", amount:25.99, day:15, payment:"Prélèvement", frequency:"monthly", months:[]},
+  {id:204, type:"prelevement", label:"Assurance habitation", amount:19.90, day:10, payment:"Prélèvement", frequency:"monthly", months:[]}
 ];
 
 const demoData = [
@@ -41,6 +41,38 @@ function statusBadge(tx){
 }
 function sortedTx(list=state.transactions){ return [...list].sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id); }
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
+
+const MONTH_NAMES=["Jan","Fév","Mar","Avr","Mai","Juin","Juil","Août","Sep","Oct","Nov","Déc"];
+function freqLabel(r){
+  const f=r.frequency||"monthly";
+  if(f==="monthly") return "Mensuel";
+  if(f==="bimonthly") return "Tous les 2 mois";
+  if(f==="quarterly") return "Trimestriel";
+  if(f==="semiannual") return "Semestriel";
+  if(f==="annual") return "Annuel";
+  return "Mois personnalisés";
+}
+function occurrencesPerYear(r){
+  const f=r.frequency||"monthly";
+  if(f==="monthly") return 12;
+  if(f==="bimonthly") return 6;
+  if(f==="quarterly") return 4;
+  if(f==="semiannual") return 2;
+  if(f==="annual") return 1;
+  return (r.months||[]).length || 1;
+}
+function monthlyProvision(r){
+  if(r.type!=="prelevement" || (r.frequency||"monthly")==="monthly") return 0;
+  return r.amount*occurrencesPerYear(r)/12;
+}
+function monthApplies(r, monthIndex){
+  const f=r.frequency||"monthly";
+  if(f==="monthly") return true;
+  const months=(r.months||[]).map(Number);
+  if(months.length) return months.includes(monthIndex+1);
+  const interval={bimonthly:2,quarterly:3,semiannual:6,annual:12}[f]||1;
+  return monthIndex%interval===0;
+}
 function renderTxList(list){
   if(!list.length) return '<div class="empty">Aucune opération</div>';
   return `<div class="card">${sortedTx(list).map(tx=>`
@@ -57,17 +89,22 @@ function homeView(){
   const rec = state.transactions.filter(x=>x.type==="recette").reduce((s,x)=>s+x.amount,0);
   const dep = state.transactions.filter(x=>x.type==="depense").reduce((s,x)=>s+x.amount,0);
   const pre = state.transactions.filter(x=>x.type==="prelevement").reduce((s,x)=>s+x.amount,0);
-  const remain = rec-dep-pre;
+  const provisions = state.recurring.filter(r=>r.type==="prelevement").reduce((s,r)=>s+monthlyProvision(r),0);
+  const available = rec-dep-pre-provisions;
   return `
     <section class="hero card">
-      <small>Reste du mois</small>
-      <div class="balance">${euro(remain)}</div>
-      <div class="meta" style="color:#d7efef">Recettes moins dépenses et prélèvements</div>
+      <small>Disponible à dépenser</small>
+      <div class="balance">${euro(available)}</div>
+      <div class="meta" style="color:#d7efef">Après dépenses, prélèvements et provisions futures</div>
     </section>
     <section class="grid">
       <div class="stat"><small>Recettes</small><strong class="green">${euro(rec)}</strong></div>
       <div class="stat"><small>Dépenses</small><strong class="red">${euro(dep)}</strong></div>
       <div class="stat"><small>Prélèvements</small><strong class="blue">${euro(pre)}</strong></div>
+    </section>
+    <section class="card provision-card">
+      <div><small>Mis de côté chaque mois</small><strong class="orange">${euro(provisions)}</strong></div>
+      <div class="meta">Pour préparer les prélèvements trimestriels, semestriels, annuels ou personnalisés.</div>
     </section>
     <button class="fab" id="addBtn">+ Ajouter une dépense</button>
     <section class="section-title"><h2>Dernières opérations</h2><button class="link-btn" data-jump="search">Voir tout</button></section>
@@ -139,11 +176,14 @@ function searchView(){
 }
 
 function recurringCard(r){
+  const provision=monthlyProvision(r);
+  const months=(r.months||[]).map(m=>MONTH_NAMES[m-1]).join(", ");
   return `
     <div class="recurring-item">
       <div>
         <strong>${escapeHtml(r.label)}</strong>
-        <div class="meta">${r.type==="recette"?"Virement":"Prélèvement"} · vers le ${r.day} du mois</div>
+        <div class="meta">${freqLabel(r)} · vers le ${r.day} ${months? "· "+months:""}</div>
+        ${provision?`<div class="provision-line">À provisionner : <strong>${euro(provision)}/mois</strong></div>`:""}
       </div>
       <div class="recurring-actions">
         <strong class="${r.type==="recette"?"green":"blue"}">${euro(r.amount)}</strong>
@@ -182,21 +222,35 @@ function settingsView(){
 function recurringFormView(type, id=null){
   const r=id ? state.recurring.find(x=>x.id===id) : null;
   const isRecette=type==="recette";
+  const freq=(r&&r.frequency)||"monthly";
+  const selected=(r&&r.months)||[];
   return `
     <div class="card form-card">
       <div class="section-title" style="margin-top:0"><h2>${r?"Modifier":"Ajouter"} ${isRecette?"une recette":"un prélèvement"} récurrent${isRecette?"e":""}</h2></div>
       <form id="recurringForm">
         <input type="hidden" id="recurringId" value="${r?r.id:""}">
         <input type="hidden" id="recurringType" value="${type}">
-        <label>Libellé
-          <input id="recurringLabel" type="text" required value="${r?escapeHtml(r.label):""}" placeholder="${isRecette?"Pension retraite":"EDF"}">
+        <label>Libellé<input id="recurringLabel" type="text" required value="${r?escapeHtml(r.label):""}" placeholder="${isRecette?"Pension retraite":"Assurance"}"></label>
+        <label>Montant à chaque échéance<input id="recurringAmount" type="number" inputmode="decimal" step="0.01" min="0" required value="${r?r.amount:""}"></label>
+        <label>Fréquence
+          <select id="recurringFrequency">
+            <option value="monthly" ${freq==="monthly"?"selected":""}>Mensuel</option>
+            <option value="bimonthly" ${freq==="bimonthly"?"selected":""}>Tous les 2 mois</option>
+            <option value="quarterly" ${freq==="quarterly"?"selected":""}>Trimestriel</option>
+            <option value="semiannual" ${freq==="semiannual"?"selected":""}>Semestriel</option>
+            <option value="annual" ${freq==="annual"?"selected":""}>Annuel</option>
+            <option value="custom" ${freq==="custom"?"selected":""}>Mois personnalisés</option>
+          </select>
         </label>
-        <label>Montant habituel
-          <input id="recurringAmount" type="number" inputmode="decimal" step="0.01" min="0" required value="${r?r.amount:""}">
-        </label>
-        <label>Jour habituel du mois
-          <input id="recurringDay" type="number" min="1" max="31" required value="${r?r.day:1}">
-        </label>
+        <label>Jour habituel du mois<input id="recurringDay" type="number" min="1" max="31" required value="${r?r.day:1}"></label>
+        <div id="monthsBox" class="months-box">
+          <div class="field-title">Mois de prélèvement / versement</div>
+          <div class="month-grid">
+            ${MONTH_NAMES.map((n,i)=>`<label class="month-chip"><input type="checkbox" value="${i+1}" ${selected.includes(i+1)?"checked":""}>${n}</label>`).join("")}
+          </div>
+          <div class="meta">Pour un semestriel, coche par exemple Mars et Septembre.</div>
+        </div>
+        <div id="provisionPreview" class="notice orange"></div>
         <button class="primary" type="submit">${r?"Enregistrer les modifications":"Ajouter"}</button>
       </form>
       <button class="secondary-btn" style="margin-top:10px" data-jump="settings">Annuler</button>
@@ -248,6 +302,20 @@ function bind(){
 
   const recurringForm=document.getElementById("recurringForm");
   if(recurringForm){
+    const refreshProvision=()=>{
+      const type=document.getElementById("recurringType").value;
+      const amount=Number(document.getElementById("recurringAmount").value)||0;
+      const frequency=document.getElementById("recurringFrequency").value;
+      const months=[...document.querySelectorAll("#monthsBox input:checked")].map(x=>Number(x.value));
+      const temp={type,amount,frequency,months};
+      const preview=document.getElementById("provisionPreview");
+      const p=monthlyProvision(temp);
+      preview.style.display=(type==="prelevement" && frequency!=="monthly")?"block":"none";
+      preview.innerHTML=p?`Budget : <strong>${euro(p)} par mois</strong> seront réservés pour cette dépense.`:"";
+    };
+    ["recurringAmount","recurringFrequency"].forEach(id=>document.getElementById(id).addEventListener("input",refreshProvision));
+    document.querySelectorAll("#monthsBox input").forEach(x=>x.addEventListener("change",refreshProvision));
+    refreshProvision();
     recurringForm.onsubmit=e=>{
       e.preventDefault();
       const idVal=document.getElementById("recurringId").value;
@@ -258,7 +326,9 @@ function bind(){
         label:document.getElementById("recurringLabel").value.trim(),
         amount:Number(document.getElementById("recurringAmount").value),
         day:Number(document.getElementById("recurringDay").value),
-        payment:type==="recette"?"Virement":"Prélèvement"
+        payment:type==="recette"?"Virement":"Prélèvement",
+        frequency:document.getElementById("recurringFrequency").value,
+        months:[...document.querySelectorAll("#monthsBox input:checked")].map(x=>Number(x.value))
       };
       if(idVal){
         const i=state.recurring.findIndex(x=>x.id===obj.id); if(i>=0) state.recurring[i]=obj;
@@ -306,6 +376,7 @@ function generateRecurringForMonth(){
   const y=now.getFullYear(), m=now.getMonth();
   let added=0;
   state.recurring.forEach(r=>{
+    if(!monthApplies(r,m)) return;
     const maxDay=new Date(y,m+1,0).getDate();
     const day=Math.min(r.day,maxDay);
     const d=`${y}-${String(m+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;

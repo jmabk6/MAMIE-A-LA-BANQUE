@@ -50,3 +50,10 @@ main{padding:0 14px 24px}
 .mini-btn{border:0;background:#edf4f5;color:var(--brand);border-radius:8px;padding:6px 8px;font-size:11px;font-weight:700}
 .mini-btn.danger{background:#fff0f0;color:#b83b3b}
 .secondary-btn{width:100%;padding:13px;border:1px solid var(--line);border-radius:12px;background:white;color:var(--ink);font-weight:700}
+
+.provision-card{margin-top:12px}.provision-card>div:first-child{display:flex;justify-content:space-between;align-items:center}.provision-card strong{font-size:20px}
+.provision-line{font-size:12px;color:#a65c00;margin-top:6px}
+.months-box{margin:14px 0}.field-title{font-size:13px;font-weight:700;margin-bottom:8px}
+.month-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
+.month-chip{margin:0!important;padding:8px 4px;border:1px solid var(--line);border-radius:9px;text-align:center;font-size:11px!important;background:white}
+.month-chip input{width:auto!important;margin:0 4px 0 0!important}
