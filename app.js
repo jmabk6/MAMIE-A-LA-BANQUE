@@ -1,4 +1,32 @@
 const STORAGE_KEY = "mamie-banque-v2";
+
+// Correctif iPhone : empêche le zoom automatique et les débordements des champs de saisie.
+(function installMobileInputFix(){
+  const style=document.createElement("style");
+  style.id="mamie-mobile-input-fix";
+  style.textContent=`
+    html, body {
+      width: 100%;
+      max-width: 100%;
+      overflow-x: hidden;
+    }
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+    input, select, textarea, button {
+      max-width: 100%;
+    }
+    input, select, textarea {
+      font-size: 16px !important;
+      line-height: 1.25;
+    }
+    .form-card, .search-box, .filters, label {
+      min-width: 0;
+      max-width: 100%;
+    }
+  `;
+  document.head.appendChild(style);
+})();
 const STORAGE_PREFIX = "mamie-banque";
 const BACKUP_PREFIX = "mamie-banque-backup-";
 
