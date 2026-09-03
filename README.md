@@ -21,3 +21,12 @@ L'application fonctionne sans serveur et stocke les données dans `localStorage`
 - Marquage "NOUVEAU"
 - Pointage
 - Stockage local
+
+
+## V2
+- Recettes récurrentes configurables
+- Prélèvements récurrents configurables
+- Ajout / modification / suppression des modèles
+- Jour habituel et montant habituel
+- Bouton pour générer les récurrents du mois
+- Protection contre les doublons du même modèle dans le même mois

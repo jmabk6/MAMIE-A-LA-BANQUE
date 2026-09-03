@@ -1,11 +1,20 @@
 
-const STORAGE_KEY = "mamie-banque-v1";
+const STORAGE_KEY = "mamie-banque-v2";
+
+const demoRecurring = [
+  {id:101, type:"recette", label:"Pension retraite", amount:2100, day:1, payment:"Virement"},
+  {id:102, type:"recette", label:"Pension de réversion", amount:620, day:28, payment:"Virement"},
+  {id:201, type:"prelevement", label:"EDF", amount:57.90, day:5, payment:"Prélèvement"},
+  {id:202, type:"prelevement", label:"Mutuelle", amount:78.50, day:5, payment:"Prélèvement"},
+  {id:203, type:"prelevement", label:"Téléphone", amount:25.99, day:15, payment:"Prélèvement"},
+  {id:204, type:"prelevement", label:"Assurance habitation", amount:19.90, day:10, payment:"Prélèvement"}
+];
 
 const demoData = [
-  {id:1,date:"2026-09-01",label:"Pension retraite",type:"recette",amount:2100,payment:"Virement",pointed:true,unknown:false},
+  {id:1,date:"2026-09-01",label:"Pension retraite",type:"recette",amount:2100,payment:"Virement",pointed:true,unknown:false,recurringId:101},
   {id:2,date:"2026-09-02",label:"Carrefour",type:"depense",amount:45.62,payment:"Carte bancaire",pointed:true,unknown:false},
-  {id:3,date:"2026-09-03",label:"Mutuelle",type:"prelevement",amount:78.50,payment:"Prélèvement",pointed:false,unknown:false},
-  {id:4,date:"2026-09-05",label:"EDF",type:"prelevement",amount:57.90,payment:"Prélèvement",pointed:false,unknown:false},
+  {id:3,date:"2026-09-05",label:"Mutuelle",type:"prelevement",amount:78.50,payment:"Prélèvement",pointed:false,unknown:false,recurringId:202},
+  {id:4,date:"2026-09-05",label:"EDF",type:"prelevement",amount:57.90,payment:"Prélèvement",pointed:false,unknown:false,recurringId:201},
   {id:5,date:"2026-09-06",label:"Pharmacie",type:"depense",amount:23.80,payment:"Carte bancaire",pointed:false,unknown:false},
   {id:6,date:"2026-09-07",label:"PRLV SEPA XYZ",type:"prelevement",amount:37.90,payment:"Prélèvement",pointed:false,unknown:true}
 ];
@@ -16,24 +25,22 @@ let currentView = "home";
 function load(){
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {transactions:[...demoData]};
+    return raw ? JSON.parse(raw) : {transactions:[...demoData.map(x=>({...x}))], recurring:[...demoRecurring.map(x=>({...x}))]};
   } catch {
-    return {transactions:[...demoData]};
+    return {transactions:[...demoData.map(x=>({...x}))], recurring:[...demoRecurring.map(x=>({...x}))]};
   }
 }
 function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
 function euro(n){ return new Intl.NumberFormat("fr-FR",{style:"currency",currency:"EUR"}).format(n); }
 function fmtDate(d){ return new Date(d+"T12:00:00").toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"}); }
-function signed(tx){ return tx.type==="recette" ? tx.amount : -tx.amount; }
 function typeClass(tx){ return tx.type==="recette"?"green":tx.type==="depense"?"red":"blue"; }
 function statusBadge(tx){
   if(tx.unknown) return '<span class="badge orange">NOUVEAU</span>';
   if(tx.pointed) return '<span class="badge green">POINTÉ</span>';
   return '<span class="badge gray">À VÉRIFIER</span>';
 }
-function sortedTx(list=state.transactions){
-  return [...list].sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id);
-}
+function sortedTx(list=state.transactions){ return [...list].sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id); }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
 function renderTxList(list){
   if(!list.length) return '<div class="empty">Aucune opération</div>';
   return `<div class="card">${sortedTx(list).map(tx=>`
@@ -45,15 +52,12 @@ function renderTxList(list){
       <div class="amount ${typeClass(tx)}">${tx.type==="recette"?"+":"-"}${euro(tx.amount)}</div>
     </div>`).join("")}</div>`;
 }
-function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
 
 function homeView(){
   const rec = state.transactions.filter(x=>x.type==="recette").reduce((s,x)=>s+x.amount,0);
   const dep = state.transactions.filter(x=>x.type==="depense").reduce((s,x)=>s+x.amount,0);
   const pre = state.transactions.filter(x=>x.type==="prelevement").reduce((s,x)=>s+x.amount,0);
   const remain = rec-dep-pre;
-  const pointed = state.transactions.filter(x=>x.pointed).length;
-  const unknown = state.transactions.filter(x=>x.unknown).length;
   return `
     <section class="hero card">
       <small>Reste du mois</small>
@@ -64,12 +68,6 @@ function homeView(){
       <div class="stat"><small>Recettes</small><strong class="green">${euro(rec)}</strong></div>
       <div class="stat"><small>Dépenses</small><strong class="red">${euro(dep)}</strong></div>
       <div class="stat"><small>Prélèvements</small><strong class="blue">${euro(pre)}</strong></div>
-    </section>
-    <section class="section-title"><h2>Suivi du relevé</h2></section>
-    <section class="grid">
-      <div class="stat"><small>Pointées</small><strong class="green">${pointed}</strong></div>
-      <div class="stat"><small>Nouvelles</small><strong class="orange">${unknown}</strong></div>
-      <div class="stat"><small>À vérifier</small><strong>${state.transactions.filter(x=>!x.pointed).length}</strong></div>
     </section>
     <button class="fab" id="addBtn">+ Ajouter une dépense</button>
     <section class="section-title"><h2>Dernières opérations</h2><button class="link-btn" data-jump="search">Voir tout</button></section>
@@ -140,14 +138,69 @@ function searchView(){
   `;
 }
 
+function recurringCard(r){
+  return `
+    <div class="recurring-item">
+      <div>
+        <strong>${escapeHtml(r.label)}</strong>
+        <div class="meta">${r.type==="recette"?"Virement":"Prélèvement"} · vers le ${r.day} du mois</div>
+      </div>
+      <div class="recurring-actions">
+        <strong class="${r.type==="recette"?"green":"blue"}">${euro(r.amount)}</strong>
+        <button class="mini-btn" data-edit-recurring="${r.id}">Modifier</button>
+        <button class="mini-btn danger" data-delete-recurring="${r.id}">Suppr.</button>
+      </div>
+    </div>`;
+}
+
 function settingsView(){
+  const recettes=state.recurring.filter(r=>r.type==="recette");
+  const prelevements=state.recurring.filter(r=>r.type==="prelevement");
   return `
     <div class="card">
-      <div class="settings-row"><div><strong>Recettes récurrentes</strong><div class="meta">À préparer dans la prochaine version</div></div><span>›</span></div>
-      <div class="settings-row"><div><strong>Prélèvements récurrents</strong><div class="meta">À préparer dans la prochaine version</div></div><span>›</span></div>
-      <div class="settings-row"><div><strong>Sauvegarde</strong><div class="meta">Pour l'instant : uniquement sur cet iPhone</div></div><span>Local</span></div>
+      <div class="section-title" style="margin-top:0">
+        <h2>Recettes récurrentes</h2>
+        <button class="link-btn" data-add-recurring="recette">+ Ajouter</button>
+      </div>
+      ${recettes.length?recettes.map(recurringCard).join(""):'<div class="empty">Aucune recette récurrente</div>'}
     </div>
-    <button class="fab" id="resetBtn">Recharger les données d'exemple</button>
+
+    <div class="card">
+      <div class="section-title" style="margin-top:0">
+        <h2>Prélèvements récurrents</h2>
+        <button class="link-btn" data-add-recurring="prelevement">+ Ajouter</button>
+      </div>
+      ${prelevements.length?prelevements.map(recurringCard).join(""):'<div class="empty">Aucun prélèvement récurrent</div>'}
+    </div>
+
+    <button class="fab" id="generateMonthBtn">Ajouter les récurrents au mois</button>
+    <div class="meta" style="padding:0 8px 16px">Les doublons déjà générés pour le mois sont ignorés.</div>
+    <button class="secondary-btn" id="resetBtn">Recharger les données d'exemple</button>
+  `;
+}
+
+function recurringFormView(type, id=null){
+  const r=id ? state.recurring.find(x=>x.id===id) : null;
+  const isRecette=type==="recette";
+  return `
+    <div class="card form-card">
+      <div class="section-title" style="margin-top:0"><h2>${r?"Modifier":"Ajouter"} ${isRecette?"une recette":"un prélèvement"} récurrent${isRecette?"e":""}</h2></div>
+      <form id="recurringForm">
+        <input type="hidden" id="recurringId" value="${r?r.id:""}">
+        <input type="hidden" id="recurringType" value="${type}">
+        <label>Libellé
+          <input id="recurringLabel" type="text" required value="${r?escapeHtml(r.label):""}" placeholder="${isRecette?"Pension retraite":"EDF"}">
+        </label>
+        <label>Montant habituel
+          <input id="recurringAmount" type="number" inputmode="decimal" step="0.01" min="0" required value="${r?r.amount:""}">
+        </label>
+        <label>Jour habituel du mois
+          <input id="recurringDay" type="number" min="1" max="31" required value="${r?r.day:1}">
+        </label>
+        <button class="primary" type="submit">${r?"Enregistrer les modifications":"Ajouter"}</button>
+      </form>
+      <button class="secondary-btn" style="margin-top:10px" data-jump="settings">Annuler</button>
+    </div>
   `;
 }
 
@@ -161,6 +214,7 @@ function render(view=currentView, options={}){
   if(view==="search") app.innerHTML=searchView();
   if(view==="settings") app.innerHTML=settingsView();
   if(view==="add") app.innerHTML=addView(options.type||"depense",!!options.unknown);
+  if(view==="recurringForm") app.innerHTML=recurringFormView(options.type,options.id||null);
   bind();
 }
 
@@ -170,6 +224,19 @@ function bind(){
   const add=document.getElementById("addBtn"); if(add) add.onclick=()=>render("add",{type:"depense"});
   const stAdd=document.getElementById("statementAddBtn"); if(stAdd) stAdd.onclick=()=>render("add",{type:"prelevement",unknown:true});
   const reset=document.getElementById("resetBtn"); if(reset) reset.onclick=resetDemo;
+  const gen=document.getElementById("generateMonthBtn"); if(gen) gen.onclick=generateRecurringForMonth;
+
+  document.querySelectorAll("[data-add-recurring]").forEach(b=>b.onclick=()=>render("recurringForm",{type:b.dataset.addRecurring}));
+  document.querySelectorAll("[data-edit-recurring]").forEach(b=>b.onclick=()=>{
+    const id=Number(b.dataset.editRecurring); const r=state.recurring.find(x=>x.id===id);
+    if(r) render("recurringForm",{type:r.type,id});
+  });
+  document.querySelectorAll("[data-delete-recurring]").forEach(b=>b.onclick=()=>{
+    const id=Number(b.dataset.deleteRecurring);
+    if(confirm("Supprimer ce modèle récurrent ?")){
+      state.recurring=state.recurring.filter(x=>x.id!==id); save(); render("settings");
+    }
+  });
 
   document.querySelectorAll("[data-point]").forEach(cb=>{
     cb.onchange=()=>{
@@ -178,6 +245,27 @@ function bind(){
       if(tx){ tx.pointed=true; save(); render("statement"); }
     };
   });
+
+  const recurringForm=document.getElementById("recurringForm");
+  if(recurringForm){
+    recurringForm.onsubmit=e=>{
+      e.preventDefault();
+      const idVal=document.getElementById("recurringId").value;
+      const type=document.getElementById("recurringType").value;
+      const obj={
+        id:idVal?Number(idVal):Date.now(),
+        type,
+        label:document.getElementById("recurringLabel").value.trim(),
+        amount:Number(document.getElementById("recurringAmount").value),
+        day:Number(document.getElementById("recurringDay").value),
+        payment:type==="recette"?"Virement":"Prélèvement"
+      };
+      if(idVal){
+        const i=state.recurring.findIndex(x=>x.id===obj.id); if(i>=0) state.recurring[i]=obj;
+      } else state.recurring.push(obj);
+      save(); render("settings");
+    };
+  }
 
   const form=document.getElementById("transactionForm");
   if(form){
@@ -200,8 +288,7 @@ function bind(){
         unknown:form.querySelector("#unknown").checked,
         pointed:false
       };
-      state.transactions.push(tx); save();
-      render(tx.unknown?"statement":"home");
+      state.transactions.push(tx); save(); render(tx.unknown?"statement":"home");
     };
   }
 
@@ -212,6 +299,31 @@ function bind(){
     });
   }
 }
+
+function generateRecurringForMonth(){
+  const now=new Date();
+  // Prototype anchored to current device month.
+  const y=now.getFullYear(), m=now.getMonth();
+  let added=0;
+  state.recurring.forEach(r=>{
+    const maxDay=new Date(y,m+1,0).getDate();
+    const day=Math.min(r.day,maxDay);
+    const d=`${y}-${String(m+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+    const exists=state.transactions.some(t=>t.recurringId===r.id && t.date.slice(0,7)===d.slice(0,7));
+    if(!exists){
+      state.transactions.push({
+        id:Date.now()+Math.floor(Math.random()*100000),
+        date:d,label:r.label,type:r.type,amount:r.amount,payment:r.payment,
+        pointed:false,unknown:false,recurringId:r.id
+      });
+      added++;
+    }
+  });
+  save();
+  alert(added ? `${added} opération(s) récurrente(s) ajoutée(s) au mois.` : "Tous les récurrents de ce mois sont déjà présents.");
+  render("home");
+}
+
 function applySearch(){
   const q=document.getElementById("q").value.trim().toLowerCase();
   const t=document.getElementById("typeFilter").value;
@@ -228,6 +340,9 @@ function applySearch(){
   });
   document.getElementById("searchResults").innerHTML=renderTxList(list);
 }
-function resetDemo(){ state={transactions:[...demoData.map(x=>({...x}))]}; save(); render("home"); }
+function resetDemo(){
+  state={transactions:[...demoData.map(x=>({...x}))],recurring:[...demoRecurring.map(x=>({...x}))]};
+  save(); render("home");
+}
 document.getElementById("seedBtn").onclick=resetDemo;
 render();
