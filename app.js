@@ -458,6 +458,66 @@ function recurringFormView(type, id=null){
   `;
 }
 
+
+function exportBackup(){
+  try{
+    const payload={
+      app:"Mamie à la banque",
+      version:1,
+      exportedAt:new Date().toISOString(),
+      storageKey:STORAGE_KEY,
+      data:JSON.parse(JSON.stringify(state))
+    };
+    const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    const d=new Date();
+    const stamp=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}_${String(d.getHours()).padStart(2,"0")}-${String(d.getMinutes()).padStart(2,"0")}`;
+    a.href=url;
+    a.download=`mamie-banque-sauvegarde-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    alert("Sauvegarde créée. Conserve bien le fichier téléchargé.");
+  }catch(err){
+    alert("Impossible de créer la sauvegarde : "+err.message);
+  }
+}
+
+function importBackupFile(file){
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=()=>{
+    try{
+      const parsed=JSON.parse(reader.result);
+      const incoming=parsed && parsed.data ? parsed.data : parsed;
+      if(!incoming || !Array.isArray(incoming.transactions) || !Array.isArray(incoming.recurring)){
+        throw new Error("Ce fichier n’est pas une sauvegarde Mamie à la banque valide.");
+      }
+
+      // Copie de sécurité de l'état actuel AVANT toute restauration.
+      const stamp=new Date().toISOString().replace(/[:.]/g,"-");
+      localStorage.setItem(`mamie-banque-backup-avant-restauration-${stamp}`, JSON.stringify(state));
+
+      const nbTx=incoming.transactions.length;
+      const nbRec=incoming.recurring.length;
+      if(!confirm(`Restaurer cette sauvegarde ?\n\n${nbTx} opération(s)\n${nbRec} récurrent(s)\n\nL’état actuel sera conservé dans une sauvegarde de sécurité.`)){
+        return;
+      }
+
+      state=JSON.parse(JSON.stringify(incoming));
+      localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
+      alert("Sauvegarde restaurée avec succès.");
+      render("home");
+    }catch(err){
+      alert(err.message || "Impossible de restaurer cette sauvegarde.");
+    }
+  };
+  reader.onerror=()=>alert("Impossible de lire le fichier.");
+  reader.readAsText(file);
+}
+
 function render(view=currentView, options={}){
   currentView=view;
   document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
@@ -485,6 +545,15 @@ function bind(){
   };
   const exp=document.getElementById("exportBackupBtn"); if(exp) exp.onclick=exportCurrentBackup;
   const gen=document.getElementById("generateMonthBtn"); if(gen) gen.onclick=generateRecurringForMonth;
+  const exportBtn=document.getElementById("exportBackupBtn");
+  if(exportBtn) exportBtn.onclick=exportBackup;
+  const importBtn=document.getElementById("importBackupBtn");
+  const importFile=document.getElementById("importBackupFile");
+  if(importBtn && importFile){
+    importBtn.onclick=()=>importFile.click();
+    importFile.onchange=()=>{ importBackupFile(importFile.files && importFile.files[0]); importFile.value=""; };
+  }
+
 
   bindRecoveryPanel();
 
