@@ -57,3 +57,57 @@ main{padding:0 14px 24px}
 .month-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
 .month-chip{margin:0!important;padding:8px 4px;border:1px solid var(--line);border-radius:9px;text-align:center;font-size:11px!important;background:white}
 .month-chip input{width:auto!important;margin:0 4px 0 0!important}
+
+/* Correctif iPhone : empêche le zoom automatique et tout débordement au focus */
+html, body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.app-shell,
+main,
+.card,
+.form-card,
+form,
+label {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.form-card input,
+.form-card select,
+.form-card textarea,
+.search-box input,
+.filters input,
+.filters select {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  font-size: 16px !important;
+  line-height: 1.25;
+  transform: none !important;
+  -webkit-text-size-adjust: 100%;
+}
+
+.form-card input:focus,
+.form-card select:focus,
+.form-card textarea:focus,
+.search-box input:focus,
+.filters input:focus,
+.filters select:focus {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  font-size: 16px !important;
+  transform: none !important;
+}
+
+input[type="date"],
+input[type="number"],
+input[type="text"],
+select,
+textarea {
+  font-size: 16px !important;
+}
+
