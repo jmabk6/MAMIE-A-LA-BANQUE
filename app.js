@@ -318,7 +318,10 @@ function addView(defaultType="depense", unknown=false){
   cancel.className="secondary-btn transaction-cancel-btn";
   cancel.dataset.jump=unknown ? "statement" : "home";
   cancel.textContent="Annuler";
-  form.insertAdjacentElement("afterend", cancel);
+  cancel.style.marginTop="10px";
+  const submitBtn=form.querySelector('button[type="submit"]');
+  if(submitBtn) submitBtn.insertAdjacentElement("afterend", cancel);
+  else form.appendChild(cancel);
 
   return wrap.innerHTML;
 }
