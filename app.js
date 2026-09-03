@@ -1,36 +1,218 @@
-
 const STORAGE_KEY = "mamie-banque-v2";
+const STORAGE_PREFIX = "mamie-banque";
+const BACKUP_PREFIX = "mamie-banque-backup-";
 
-const demoRecurring = [
-  {id:101, type:"recette", label:"Pension retraite", amount:2100, day:1, payment:"Virement", frequency:"monthly", months:[]},
-  {id:102, type:"recette", label:"Pension de réversion", amount:620, day:28, payment:"Virement", frequency:"monthly", months:[]},
-  {id:201, type:"prelevement", label:"EDF", amount:57.90, day:5, payment:"Prélèvement", frequency:"monthly", months:[]},
-  {id:202, type:"prelevement", label:"Mutuelle", amount:78.50, day:5, payment:"Prélèvement", frequency:"monthly", months:[]},
-  {id:203, type:"prelevement", label:"Téléphone", amount:25.99, day:15, payment:"Prélèvement", frequency:"monthly", months:[]},
-  {id:204, type:"prelevement", label:"Assurance habitation", amount:19.90, day:10, payment:"Prélèvement", frequency:"monthly", months:[]}
-];
+// We keep only a signature to recognize the old demonstration dataset.
+// No demonstration amounts/data can ever be reloaded by this version.
+const DEMO_SIGNATURE = {
+  recurring: ["Pension retraite","Pension de réversion","EDF","Mutuelle","Téléphone","Assurance habitation"],
+  transactions: ["Pension retraite","Carrefour","Mutuelle","EDF","Pharmacie","PRLV SEPA XYZ"]
+};
 
-const demoData = [
-  {id:1,date:"2026-09-01",label:"Pension retraite",type:"recette",amount:2100,payment:"Virement",pointed:true,unknown:false,recurringId:101},
-  {id:2,date:"2026-09-02",label:"Carrefour",type:"depense",amount:45.62,payment:"Carte bancaire",pointed:true,unknown:false},
-  {id:3,date:"2026-09-05",label:"Mutuelle",type:"prelevement",amount:78.50,payment:"Prélèvement",pointed:false,unknown:false,recurringId:202},
-  {id:4,date:"2026-09-05",label:"EDF",type:"prelevement",amount:57.90,payment:"Prélèvement",pointed:false,unknown:false,recurringId:201},
-  {id:5,date:"2026-09-06",label:"Pharmacie",type:"depense",amount:23.80,payment:"Carte bancaire",pointed:false,unknown:false},
-  {id:6,date:"2026-09-07",label:"PRLV SEPA XYZ",type:"prelevement",amount:37.90,payment:"Prélèvement",pointed:false,unknown:true}
-];
+function emptyState(){
+  return {transactions:[], recurring:[]};
+}
+
+function isValidState(value){
+  return !!value && typeof value==="object" &&
+    Array.isArray(value.transactions) && Array.isArray(value.recurring);
+}
+
+function cloneState(value){
+  return JSON.parse(JSON.stringify(value));
+}
+
+function parseStoredState(raw){
+  if(!raw) return null;
+  try{
+    const parsed=JSON.parse(raw);
+    return isValidState(parsed) ? parsed : null;
+  }catch{
+    return null;
+  }
+}
+
+function load(){
+  // IMPORTANT: lecture uniquement. Jamais d'écriture, jamais de données d'exemple.
+  const raw=localStorage.getItem(STORAGE_KEY);
+  const parsed=parseStoredState(raw);
+  return parsed ? parsed : emptyState();
+}
+
+function makeBackupKey(reason="securite"){
+  const stamp=new Date().toISOString().replace(/[:.]/g,"-");
+  const safeReason=String(reason).replace(/[^a-zA-Z0-9_-]/g,"-").slice(0,40) || "securite";
+  let key=`${BACKUP_PREFIX}${stamp}-${safeReason}`;
+  let i=1;
+  while(localStorage.getItem(key)!==null){
+    key=`${BACKUP_PREFIX}${stamp}-${safeReason}-${i++}`;
+  }
+  return key;
+}
+
+function backupCurrentStorage(reason="avant-modification"){
+  const raw=localStorage.getItem(STORAGE_KEY);
+  if(raw===null) return null;
+  const key=makeBackupKey(reason);
+  // Copie exacte de la valeur actuelle. On ne modifie ni ne supprime la clé source.
+  localStorage.setItem(key, raw);
+  return key;
+}
+
+function save(reason="avant-modification"){
+  // Toute modification persistée commence par une copie de sécurité de l'état
+  // actuellement enregistré sous mamie-banque-v2.
+  backupCurrentStorage(reason);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function listMamieStorage(){
+  const items=[];
+  for(let i=0;i<localStorage.length;i++){
+    const key=localStorage.key(i);
+    if(!key || !key.startsWith(STORAGE_PREFIX)) continue;
+    const raw=localStorage.getItem(key);
+    const parsed=parseStoredState(raw);
+    items.push({
+      key,
+      raw,
+      parsed,
+      bytes: raw ? new Blob([raw]).size : 0
+    });
+  }
+  return items.sort((a,b)=>{
+    if(a.key===STORAGE_KEY) return -1;
+    if(b.key===STORAGE_KEY) return 1;
+    return a.key.localeCompare(b.key);
+  });
+}
+
+function looksLikeOldDemo(data){
+  if(!isValidState(data)) return false;
+  const r=(data.recurring||[]).map(x=>x&&x.label).filter(Boolean);
+  const t=(data.transactions||[]).map(x=>x&&x.label).filter(Boolean);
+  const recurringMatches=DEMO_SIGNATURE.recurring.filter(x=>r.includes(x)).length;
+  const txMatches=DEMO_SIGNATURE.transactions.filter(x=>t.includes(x)).length;
+  return recurringMatches>=5 && txMatches>=4;
+}
+
+function storageSummary(item){
+  if(!item.parsed){
+    return {valid:false, tx:0, recurring:0, labels:"", demo:false};
+  }
+  const labels=(item.parsed.recurring||[]).map(r=>r.label).filter(Boolean).slice(0,8);
+  return {
+    valid:true,
+    tx:item.parsed.transactions.length,
+    recurring:item.parsed.recurring.length,
+    labels:labels.join(" · "),
+    demo:looksLikeOldDemo(item.parsed)
+  };
+}
+
+function recoveryPanelHtml(){
+  const items=listMamieStorage();
+  if(!items.length){
+    return '<div class="notice">Aucune clé localStorage commençant par « mamie-banque » n’a été trouvée sur cet appareil et dans ce navigateur.</div>';
+  }
+  return `<div class="card">
+    <div class="section-title" style="margin-top:0"><h2>Données trouvées sur cet iPhone</h2></div>
+    <div class="meta" style="margin-bottom:10px">
+      Rien n’est supprimé. « Récupérer » copie la version choisie vers la version actuelle après avoir sauvegardé l’état actuel.
+    </div>
+    ${items.map((item,index)=>{
+      const s=storageSummary(item);
+      const current=item.key===STORAGE_KEY;
+      const size=(item.bytes/1024).toFixed(1);
+      return `<div class="recurring-item" style="align-items:flex-start">
+        <div style="min-width:0;flex:1">
+          <strong>${escapeHtml(item.key)}</strong>
+          <div class="meta">${current?"Clé utilisée actuellement · ":""}${size} Ko</div>
+          ${s.valid
+            ? `<div class="meta">${s.tx} opération(s) · ${s.recurring} récurrent(s)</div>
+               ${s.labels?`<div class="meta" style="margin-top:4px">${escapeHtml(s.labels)}</div>`:""}
+               ${s.demo?'<div class="notice orange" style="margin-top:8px">Cette version ressemble fortement aux anciennes données d’exemple.</div>':""}`
+            : '<div class="notice orange" style="margin-top:8px">Contenu non reconnu comme une sauvegarde Mamie à la banque.</div>'}
+        </div>
+        <div class="recurring-actions">
+          ${s.valid?`<button class="mini-btn" data-preview-storage="${index}">Voir</button>`:""}
+          ${s.valid && !current?`<button class="mini-btn" data-recover-storage="${index}">Récupérer</button>`:""}
+        </div>
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+
+function previewStorage(index){
+  const items=listMamieStorage();
+  const item=items[index];
+  if(!item || !item.parsed) return;
+  const s=storageSummary(item);
+  const recurring=(item.parsed.recurring||[]).map(r=>`${r.label || "Sans libellé"} — ${euro(Number(r.amount)||0)}`).join("\n");
+  const tx=(item.parsed.transactions||[]).slice(0,20).map(t=>`${t.date || "?"} — ${t.label || "Sans libellé"} — ${euro(Number(t.amount)||0)}`).join("\n");
+  alert(
+    `Clé : ${item.key}\n\n`+
+    `${s.tx} opération(s) · ${s.recurring} récurrent(s)`+
+    `${s.demo?"\n⚠ Cette version ressemble aux anciennes données d’exemple.":""}`+
+    `\n\nRÉCURRENTS\n${recurring || "(aucun)"}`+
+    `\n\n20 PREMIÈRES OPÉRATIONS\n${tx || "(aucune)"}`
+  );
+}
+
+function recoverStorage(index){
+  const items=listMamieStorage();
+  const item=items[index];
+  if(!item || !item.parsed) return;
+  const s=storageSummary(item);
+  const warning=s.demo
+    ? "\n\nATTENTION : cette version ressemble fortement aux anciennes données d’exemple."
+    : "";
+  if(!confirm(
+    `Récupérer les données de « ${item.key} » ?\n\n`+
+    `${s.tx} opération(s) et ${s.recurring} récurrent(s).`+
+    warning+
+    `\n\nL’état actuel sera sauvegardé avant la récupération. L’ancienne clé restera intacte.`
+  )) return;
+
+  // Sauvegarde explicite avant récupération.
+  backupCurrentStorage("avant-recuperation");
+  state=cloneState(item.parsed);
+  // Écriture directe : on vient déjà de sauvegarder l'état courant juste au-dessus.
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  alert(`Données récupérées depuis « ${item.key} ».\nL’ancienne clé n’a pas été modifiée.`);
+  render("settings");
+}
+
+function exportCurrentBackup(){
+  const payload={
+    app:"Mamie à la banque",
+    exportedAt:new Date().toISOString(),
+    storageKey:STORAGE_KEY,
+    state:cloneState(state)
+  };
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;
+  a.download=`mamie-a-la-banque-sauvegarde-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
 
 let state = load();
 let currentView = "home";
 
-function load(){
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {transactions:[...demoData.map(x=>({...x}))], recurring:[...demoRecurring.map(x=>({...x}))]};
-  } catch {
-    return {transactions:[...demoData.map(x=>({...x}))], recurring:[...demoRecurring.map(x=>({...x}))]};
-  }
+// Neutralisation du bouton ↻ historique présent dans index.html.
+const legacySeedBtn=document.getElementById("seedBtn");
+if(legacySeedBtn){
+  legacySeedBtn.onclick=null;
+  legacySeedBtn.disabled=true;
+  legacySeedBtn.hidden=true;
+  legacySeedBtn.setAttribute("aria-hidden","true");
 }
-function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+
 function euro(n){ return new Intl.NumberFormat("fr-FR",{style:"currency",currency:"EUR"}).format(n); }
 function fmtDate(d){ return new Date(d+"T12:00:00").toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"}); }
 function typeClass(tx){ return tx.type==="recette"?"green":tx.type==="depense"?"red":"blue"; }
@@ -215,7 +397,13 @@ function settingsView(){
 
     <button class="fab" id="generateMonthBtn">Ajouter les récurrents au mois</button>
     <div class="meta" style="padding:0 8px 16px">Les doublons déjà générés pour le mois sont ignorés.</div>
-    <button class="secondary-btn" id="resetBtn">Recharger les données d'exemple</button>
+    <div class="card" style="margin-top:16px">
+      <div class="section-title" style="margin-top:0"><h2>Sauvegarde et récupération</h2></div>
+      <div class="meta" style="margin-bottom:10px">Recherche toutes les anciennes clés localStorage commençant par « mamie-banque ». Aucune clé n’est supprimée.</div>
+      <button class="secondary-btn" id="scanStorageBtn">Rechercher mes anciennes données</button>
+      <button class="secondary-btn" id="exportBackupBtn" style="margin-top:10px">Télécharger une sauvegarde de l’état actuel</button>
+    </div>
+    <div id="recoveryPanel"></div>
   `;
 }
 
@@ -277,8 +465,16 @@ function bind(){
   document.querySelectorAll(".nav-btn").forEach(b=>b.onclick=()=>render(b.dataset.view));
   const add=document.getElementById("addBtn"); if(add) add.onclick=()=>render("add",{type:"depense"});
   const stAdd=document.getElementById("statementAddBtn"); if(stAdd) stAdd.onclick=()=>render("add",{type:"prelevement",unknown:true});
-  const reset=document.getElementById("resetBtn"); if(reset) reset.onclick=resetDemo;
+  const scan=document.getElementById("scanStorageBtn");
+  if(scan) scan.onclick=()=>{
+    const panel=document.getElementById("recoveryPanel");
+    if(panel) panel.innerHTML=recoveryPanelHtml();
+    bindRecoveryPanel();
+  };
+  const exp=document.getElementById("exportBackupBtn"); if(exp) exp.onclick=exportCurrentBackup;
   const gen=document.getElementById("generateMonthBtn"); if(gen) gen.onclick=generateRecurringForMonth;
+
+  bindRecoveryPanel();
 
   document.querySelectorAll("[data-add-recurring]").forEach(b=>b.onclick=()=>render("recurringForm",{type:b.dataset.addRecurring}));
   document.querySelectorAll("[data-edit-recurring]").forEach(b=>b.onclick=()=>{
@@ -370,6 +566,15 @@ function bind(){
   }
 }
 
+function bindRecoveryPanel(){
+  document.querySelectorAll("[data-preview-storage]").forEach(b=>{
+    b.onclick=()=>previewStorage(Number(b.dataset.previewStorage));
+  });
+  document.querySelectorAll("[data-recover-storage]").forEach(b=>{
+    b.onclick=()=>recoverStorage(Number(b.dataset.recoverStorage));
+  });
+}
+
 function generateRecurringForMonth(){
   const now=new Date();
   // Prototype anchored to current device month.
@@ -411,9 +616,4 @@ function applySearch(){
   });
   document.getElementById("searchResults").innerHTML=renderTxList(list);
 }
-function resetDemo(){
-  state={transactions:[...demoData.map(x=>({...x}))],recurring:[...demoRecurring.map(x=>({...x}))]};
-  save(); render("home");
-}
-document.getElementById("seedBtn").onclick=resetDemo;
 render();
