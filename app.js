@@ -2,27 +2,81 @@ const STORAGE_KEY = "mamie-banque-v2";
 
 // Correctif iPhone : empêche le zoom automatique et les débordements des champs de saisie.
 (function installMobileInputFix(){
+  const old=document.getElementById("mamie-mobile-input-fix");
+  if(old) old.remove();
+
   const style=document.createElement("style");
   style.id="mamie-mobile-input-fix";
   style.textContent=`
     html, body {
-      width: 100%;
-      max-width: 100%;
-      overflow-x: hidden;
+      width: 100% !important;
+      max-width: 100% !important;
+      overflow-x: hidden !important;
+      -webkit-text-size-adjust: 100% !important;
+      text-size-adjust: 100% !important;
     }
+
     *, *::before, *::after {
-      box-sizing: border-box;
+      box-sizing: border-box !important;
     }
-    input, select, textarea, button {
-      max-width: 100%;
+
+    .app-shell,
+    #app,
+    .card,
+    .form-card,
+    .search-box,
+    .filters,
+    form,
+    label,
+    .recurring-item,
+    .recurring-actions {
+      min-width: 0 !important;
+      max-width: 100% !important;
     }
-    input, select, textarea {
+
+    .app-shell,
+    #app,
+    form,
+    .form-card {
+      width: 100% !important;
+      overflow-x: hidden !important;
+    }
+
+    label {
+      width: 100% !important;
+    }
+
+    input,
+    select,
+    textarea {
+      display: block !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      box-sizing: border-box !important;
       font-size: 16px !important;
-      line-height: 1.25;
+      line-height: 1.25 !important;
+      transform: none !important;
+      zoom: 1 !important;
     }
-    .form-card, .search-box, .filters, label {
-      min-width: 0;
-      max-width: 100%;
+
+    input:focus,
+    select:focus,
+    textarea:focus,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible {
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      font-size: 16px !important;
+      transform: none !important;
+      scale: 1 !important;
+      zoom: 1 !important;
+    }
+
+    button {
+      max-width: 100% !important;
     }
   `;
   document.head.appendChild(style);
