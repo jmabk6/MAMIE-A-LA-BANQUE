@@ -153,3 +153,42 @@ textarea {
 .transaction-cancel-btn {
   margin-top: 10px;
 }
+
+
+/* Recherche iPhone : grille stable et dates lisibles */
+.filters{
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important;
+  width:100%;
+}
+.filters > *{min-width:0 !important;max-width:100%;}
+.filter-field{
+  display:block;
+  min-width:0;
+  margin:0 !important;
+  font-size:12px;
+  font-weight:700;
+  color:var(--muted);
+}
+.filter-field span{
+  display:block;
+  margin:0 0 5px 2px;
+}
+.filter-field input[type="date"]{
+  display:block;
+  width:100% !important;
+  min-width:0 !important;
+  max-width:100% !important;
+  margin:0 !important;
+  padding:11px 8px !important;
+  box-sizing:border-box !important;
+}
+@media(max-width:360px){
+  .filters{grid-template-columns:1fr !important;}
+}
+
+/* Annuler reste dans le même bloc que Enregistrer */
+.transaction-cancel-btn{
+  display:block;
+  width:100%;
+  margin:10px 0 0 !important;
+}

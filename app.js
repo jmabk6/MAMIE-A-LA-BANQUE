@@ -361,8 +361,8 @@ function searchView(){
         </select>
         <input id="minFilter" type="number" step="0.01" placeholder="Montant min." />
         <input id="maxFilter" type="number" step="0.01" placeholder="Montant max." />
-        <input id="fromFilter" type="date" />
-        <input id="toFilter" type="date" />
+        <label class="filter-field"><span>Du</span><input id="fromFilter" type="date" /></label>
+        <label class="filter-field"><span>Au</span><input id="toFilter" type="date" /></label>
       </div>
     </div>
     <div id="searchResults">${renderTxList(state.transactions)}</div>
