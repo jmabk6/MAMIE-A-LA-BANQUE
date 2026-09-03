@@ -361,8 +361,8 @@ function searchView(){
         </select>
         <input id="minFilter" type="number" step="0.01" placeholder="Montant min." />
         <input id="maxFilter" type="number" step="0.01" placeholder="Montant max." />
-        <label class="filter-field"><span>Du</span><input id="fromFilter" type="date" /></label>
-        <label class="filter-field"><span>Au</span><input id="toFilter" type="date" /></label>
+        <div class="date-filter" data-placeholder="Du"><input id="fromFilter" type="date" /></div>
+        <div class="date-filter" data-placeholder="Au"><input id="toFilter" type="date" /></div>
       </div>
     </div>
     <div id="searchResults">${renderTxList(state.transactions)}</div>
@@ -569,6 +569,16 @@ function bind(){
       state.transactions.push(tx); save(); render(tx.unknown?"statement":"home");
     };
   }
+
+  document.querySelectorAll(".date-filter input[type=\"date\"]").forEach(input=>{
+    const wrap=input.closest(".date-filter");
+    const sync=()=>wrap.classList.toggle("has-value", !!input.value);
+    input.addEventListener("focus",()=>wrap.classList.add("is-focus"));
+    input.addEventListener("blur",()=>{wrap.classList.remove("is-focus"); sync();});
+    input.addEventListener("input",sync);
+    input.addEventListener("change",sync);
+    sync();
+  });
 
   const q=document.getElementById("q");
   if(q){

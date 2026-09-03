@@ -155,40 +155,61 @@ textarea {
 }
 
 
-/* Recherche iPhone : grille stable et dates lisibles */
-.filters{
-  grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important;
-  width:100%;
-}
-.filters > *{min-width:0 !important;max-width:100%;}
-.filter-field{
-  display:block;
-  min-width:0;
-  margin:0 !important;
-  font-size:12px;
-  font-weight:700;
-  color:var(--muted);
-}
-.filter-field span{
-  display:block;
-  margin:0 0 5px 2px;
-}
-.filter-field input[type="date"]{
-  display:block;
-  width:100% !important;
-  min-width:0 !important;
-  max-width:100% !important;
-  margin:0 !important;
-  padding:11px 8px !important;
-  box-sizing:border-box !important;
-}
-@media(max-width:360px){
-  .filters{grid-template-columns:1fr !important;}
-}
-
 /* Annuler reste dans le même bloc que Enregistrer */
 .transaction-cancel-btn{
   display:block;
   width:100%;
   margin:10px 0 0 !important;
+}
+
+
+/* Recherche iPhone : 2 colonnes strictement identiques, y compris pour les dates */
+.filters{
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important;
+  width:100% !important;
+}
+.filters > *{
+  min-width:0 !important;
+  width:100% !important;
+  max-width:100% !important;
+}
+.date-filter{
+  position:relative;
+  min-width:0 !important;
+  width:100% !important;
+  max-width:100% !important;
+}
+.date-filter input[type="date"]{
+  display:block;
+  width:100% !important;
+  min-width:0 !important;
+  max-width:100% !important;
+  height:auto !important;
+  margin:0 !important;
+  padding:11px !important;
+  border:1px solid var(--line) !important;
+  border-radius:10px !important;
+  background:#fff !important;
+  box-sizing:border-box !important;
+  font-size:16px !important;
+  -webkit-appearance:none;
+  appearance:none;
+}
+.date-filter::before{
+  content:attr(data-placeholder);
+  position:absolute;
+  left:11px;
+  top:50%;
+  transform:translateY(-50%);
+  color:var(--muted);
+  font-size:16px;
+  font-weight:400;
+  pointer-events:none;
+  z-index:2;
+  background:#fff;
+  padding-right:4px;
+}
+.date-filter.is-focus::before,
+.date-filter.has-value::before{
+  display:none;
 }
