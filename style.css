@@ -190,3 +190,29 @@ textarea {
 .backup-card .secondary-btn{
   width:100%;
 }
+
+
+/* Dépenses cliquables : un tap = modifier, double-tap = aucun zoom */
+.tx-editable{
+  cursor:pointer;
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
+  user-select:none;
+  -webkit-user-select:none;
+}
+.tx-editable:active{
+  transform:none !important;
+}
+.tx-editable:focus{
+  outline:none;
+  box-shadow:inset 0 0 0 1px var(--line);
+  border-radius:10px;
+}
+
+/* Empêche les conteneurs de s'élargir pendant l'interaction */
+.tx,
+.tx-main,
+.amount{
+  min-width:0;
+  max-width:100%;
+}

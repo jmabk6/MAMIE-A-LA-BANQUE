@@ -203,6 +203,7 @@ function exportCurrentBackup(){
 
 let state = load();
 let currentView = "home";
+let transactionReturnView = "home";
 
 // Neutralisation du bouton ↻ historique présent dans index.html.
 const legacySeedBtn=document.getElementById("seedBtn");
@@ -258,7 +259,8 @@ function monthApplies(r, monthIndex){
 function renderTxList(list){
   if(!list.length) return '<div class="empty">Aucune opération</div>';
   return `<div class="card">${sortedTx(list).map(tx=>`
-    <div class="tx">
+    <div class="tx ${tx.type==="depense"?"tx-editable":""}"
+         ${tx.type==="depense" ? `data-edit-tx="${tx.id}" role="button" tabindex="0" aria-label="Modifier ${escapeHtml(tx.label)}"` : ""}>
       <div class="tx-main">
         <strong>${escapeHtml(tx.label)} ${statusBadge(tx)}</strong>
         <div class="meta">${fmtDate(tx.date)} · ${escapeHtml(tx.payment)}</div>
@@ -387,23 +389,38 @@ function expensesView(){
   `;
 }
 
-function addView(defaultType="depense", unknown=false){
+function addView(defaultType="depense", unknown=false, editId=null){
   const tpl = document.getElementById("transaction-form-template").content.cloneNode(true);
   const wrap = document.createElement("div");
   wrap.appendChild(tpl);
   const form = wrap.querySelector("#transactionForm");
-  form.querySelector("#date").value = new Date().toISOString().slice(0,10);
-  form.querySelector("#type").value = defaultType;
-  form.querySelector("#unknown").checked = unknown;
-  form.querySelectorAll("#typeSegment button").forEach(b=>b.classList.toggle("active",b.dataset.type===defaultType));
+  const existing = editId!==null ? state.transactions.find(x=>Number(x.id)===Number(editId)) : null;
 
-  // Toujours offrir une sortie claire de l’écran de saisie sans enregistrer.
+  form.dataset.editId = existing ? String(existing.id) : "";
+
+  if(existing){
+    form.querySelector("#date").value = existing.date || "";
+    form.querySelector("#type").value = existing.type || "depense";
+    form.querySelector("#label").value = existing.label || "";
+    form.querySelector("#amount").value = Number(existing.amount);
+    form.querySelector("#payment").value = existing.payment || "Carte bancaire";
+    form.querySelector("#unknown").checked = !!existing.unknown;
+    form.querySelectorAll("#typeSegment button").forEach(b=>b.classList.toggle("active",b.dataset.type===existing.type));
+
+    const submitBtn=form.querySelector('button[type="submit"]');
+    if(submitBtn) submitBtn.textContent="Enregistrer les modifications";
+  }else{
+    form.querySelector("#date").value = new Date().toISOString().slice(0,10);
+    form.querySelector("#type").value = defaultType;
+    form.querySelector("#unknown").checked = unknown;
+    form.querySelectorAll("#typeSegment button").forEach(b=>b.classList.toggle("active",b.dataset.type===defaultType));
+  }
+
   const cancel=document.createElement("button");
   cancel.type="button";
   cancel.className="secondary-btn transaction-cancel-btn";
-  cancel.dataset.jump=unknown ? "statement" : "home";
+  cancel.dataset.transactionCancel="1";
   cancel.textContent="Annuler";
-  cancel.style.marginTop="10px";
   const submitBtn=form.querySelector('button[type="submit"]');
   if(submitBtn) submitBtn.insertAdjacentElement("afterend", cancel);
   else form.appendChild(cancel);
@@ -612,7 +629,8 @@ function render(view=currentView, options={}){
   if(view==="statement") app.innerHTML=statementView();
   if(view==="search") app.innerHTML=searchView();
   if(view==="settings") app.innerHTML=settingsView();
-  if(view==="add") app.innerHTML=addView(options.type||"depense",!!options.unknown);
+  if(view==="add") app.innerHTML=addView(options.type||"depense",!!options.unknown,null);
+  if(view==="editTransaction") app.innerHTML=addView("depense",false,options.id);
   if(view==="recurringForm") app.innerHTML=recurringFormView(options.type,options.id||null);
   bind();
 }
@@ -620,8 +638,28 @@ function render(view=currentView, options={}){
 function bind(){
   document.querySelectorAll("[data-jump]").forEach(b=>b.onclick=()=>render(b.dataset.jump));
   document.querySelectorAll(".nav-btn").forEach(b=>b.onclick=()=>render(b.dataset.view));
-  const add=document.getElementById("addBtn"); if(add) add.onclick=()=>render("add",{type:"depense"});
-  const stAdd=document.getElementById("statementAddBtn"); if(stAdd) stAdd.onclick=()=>render("add",{type:"prelevement",unknown:true});
+  const add=document.getElementById("addBtn");
+  if(add) add.onclick=()=>{ transactionReturnView="home"; render("add",{type:"depense"}); };
+  const stAdd=document.getElementById("statementAddBtn");
+  if(stAdd) stAdd.onclick=()=>{ transactionReturnView="statement"; render("add",{type:"prelevement",unknown:true}); };
+
+  document.querySelectorAll("[data-edit-tx]").forEach(row=>{
+    const openEdit=()=>{
+      transactionReturnView = currentView==="editTransaction" ? "home" : currentView;
+      render("editTransaction",{id:Number(row.dataset.editTx)});
+    };
+    row.onclick=openEdit;
+    row.ondblclick=e=>{ e.preventDefault(); e.stopPropagation(); };
+    row.onkeydown=e=>{
+      if(e.key==="Enter" || e.key===" "){
+        e.preventDefault();
+        openEdit();
+      }
+    };
+  });
+
+  const transactionCancel=document.querySelector("[data-transaction-cancel]");
+  if(transactionCancel) transactionCancel.onclick=()=>render(transactionReturnView || "home");
   const scan=document.getElementById("scanStorageBtn");
   if(scan) scan.onclick=()=>{
     const panel=document.getElementById("recoveryPanel");
@@ -710,6 +748,27 @@ function bind(){
     });
     form.onsubmit=e=>{
       e.preventDefault();
+      const editId=form.dataset.editId ? Number(form.dataset.editId) : null;
+
+      if(editId!==null){
+        const i=state.transactions.findIndex(x=>Number(x.id)===editId);
+        if(i>=0){
+          const previous=state.transactions[i];
+          state.transactions[i]={
+            ...previous,
+            type:form.querySelector("#type").value,
+            date:form.querySelector("#date").value,
+            label:form.querySelector("#label").value.trim(),
+            amount:Number(form.querySelector("#amount").value),
+            payment:form.querySelector("#payment").value,
+            unknown:form.querySelector("#unknown").checked
+          };
+          save("avant-modification-depense");
+          render(transactionReturnView || "home");
+          return;
+        }
+      }
+
       const tx={
         id:Date.now(),
         type:form.querySelector("#type").value,
@@ -720,7 +779,9 @@ function bind(){
         unknown:form.querySelector("#unknown").checked,
         pointed:false
       };
-      state.transactions.push(tx); save(); render(tx.unknown?"statement":"home");
+      state.transactions.push(tx);
+      save("avant-ajout-operation");
+      render(tx.unknown?"statement":"home");
     };
   }
 
