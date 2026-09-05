@@ -1,0 +1,234 @@
+
+:root{
+  --bg:#f5f7f7;
+  --card:#ffffff;
+  --ink:#16343a;
+  --muted:#74858a;
+  --brand:#0f5f67;
+  --brand2:#177783;
+  --green:#1f9d55;
+  --red:#d94a4a;
+  --blue:#3676d9;
+  --orange:#e98b2a;
+  --line:#dde6e7;
+  --shadow:0 8px 24px rgba(20,52,58,.08);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink)}
+button,input,select{font:inherit}
+button{cursor:pointer}
+.app-shell{max-width:520px;margin:0 auto;min-height:100vh;background:var(--bg);padding-bottom:88px}
+.topbar{position:sticky;top:0;z-index:10;display:flex;justify-content:space-between;align-items:center;padding:22px 18px 14px;background:rgba(245,247,247,.95);backdrop-filter:blur(12px)}
+h1{font-size:25px;margin:2px 0 0}.eyebrow{font-size:13px;color:var(--muted)}
+.icon-btn{border:0;background:var(--card);width:40px;height:40px;border-radius:50%;box-shadow:var(--shadow);color:var(--brand);font-size:20px}
+main{padding:0 14px 24px}
+.card{background:var(--card);border-radius:18px;padding:16px;box-shadow:var(--shadow);margin-bottom:14px}
+.hero{background:linear-gradient(135deg,#0f5f67,#177783);color:white}
+.hero h2{margin:0 0 4px}.hero .balance{font-size:34px;font-weight:800;margin-top:8px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stat{padding:14px;border-radius:16px;background:white;box-shadow:var(--shadow)}
+.stat small{display:block;color:var(--muted);margin-bottom:6px}.stat strong{font-size:18px}.green{color:var(--green)}.red{color:var(--red)}.blue{color:var(--blue)}.orange{color:var(--orange)}
+.section-title{display:flex;justify-content:space-between;align-items:center;margin:18px 2px 10px}.section-title h2{font-size:18px;margin:0}.link-btn{border:0;background:none;color:var(--brand);font-weight:700}
+.tx{display:grid;grid-template-columns:1fr auto;gap:8px;padding:13px 0;border-bottom:1px solid var(--line)}.tx:last-child{border-bottom:0}
+.tx-main strong{display:block}.meta{font-size:12px;color:var(--muted);margin-top:4px}.amount{font-weight:800}.badge{display:inline-block;padding:3px 7px;border-radius:999px;font-size:10px;font-weight:800;margin-left:6px}.badge.orange{background:#fff0df;color:#b65d00}.badge.green{background:#e6f6ec;color:#157741}.badge.gray{background:#edf1f2;color:#607177}
+.fab{width:100%;border:0;border-radius:16px;background:var(--brand);color:#fff;padding:15px;font-weight:800;margin:8px 0 16px}
+.bottom-nav{position:fixed;left:50%;transform:translateX(-50%);bottom:0;max-width:520px;width:100%;display:grid;grid-template-columns:repeat(5,1fr);background:#fff;border-top:1px solid var(--line);padding:8px 4px calc(8px + env(safe-area-inset-bottom));z-index:30}
+.nav-btn{border:0;background:none;color:#87979b;display:flex;flex-direction:column;align-items:center;gap:3px}.nav-btn span{font-size:22px}.nav-btn small{font-size:10px}.nav-btn.active{color:var(--brand);font-weight:800}
+.form-card label{display:block;font-size:13px;font-weight:700;margin:12px 0}.form-card input,.form-card select,.search-box input{width:100%;margin-top:6px;padding:13px;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--ink)}
+.segmented{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:#eef3f4;padding:4px;border-radius:13px}.segmented button{border:0;padding:10px 6px;border-radius:10px;background:transparent;font-size:12px;font-weight:800}.segmented button.active{background:#fff;color:var(--brand);box-shadow:0 2px 8px rgba(0,0,0,.07)}
+.check-row{display:flex!important;gap:10px;align-items:center}.check-row input{width:auto!important;margin:0!important}
+.primary{width:100%;padding:14px;border:0;border-radius:12px;background:var(--brand);color:#fff;font-weight:800}
+.filters{display:grid;grid-template-columns:1fr 1fr;gap:8px}.filters select,.filters input{width:100%;padding:11px;border:1px solid var(--line);border-radius:10px;background:white}
+.reconcile-item{display:grid;grid-template-columns:28px 1fr auto;gap:8px;align-items:center;padding:13px 0;border-bottom:1px solid var(--line)}.reconcile-item input{width:20px;height:20px}
+.notice{padding:13px;border-radius:13px;background:#e9f7ed;color:#226b3a;margin-bottom:12px}.notice.orange{background:#fff1e2;color:#9b5700}
+.empty{text-align:center;color:var(--muted);padding:30px 10px}
+.settings-row{display:flex;justify-content:space-between;gap:10px;padding:14px 0;border-bottom:1px solid var(--line)}
+@media(max-width:380px){.grid{grid-template-columns:1fr}.topbar h1{font-size:22px}}
+
+.recurring-item{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line)}
+.recurring-item:last-child{border-bottom:0}
+.recurring-actions{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+.mini-btn{border:0;background:#edf4f5;color:var(--brand);border-radius:8px;padding:6px 8px;font-size:11px;font-weight:700}
+.mini-btn.danger{background:#fff0f0;color:#b83b3b}
+.secondary-btn{width:100%;padding:13px;border:1px solid var(--line);border-radius:12px;background:white;color:var(--ink);font-weight:700}
+
+.provision-card{margin-top:12px}.provision-card>div:first-child{display:flex;justify-content:space-between;align-items:center}.provision-card strong{font-size:20px}
+.provision-line{font-size:12px;color:#a65c00;margin-top:6px}
+.months-box{margin:14px 0}.field-title{font-size:13px;font-weight:700;margin-bottom:8px}
+.month-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
+.month-chip{margin:0!important;padding:8px 4px;border:1px solid var(--line);border-radius:9px;text-align:center;font-size:11px!important;background:white}
+.month-chip input{width:auto!important;margin:0 4px 0 0!important}
+
+/* Correctif iPhone : empêche le zoom automatique et tout débordement au focus */
+html, body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.app-shell,
+main,
+.card,
+.form-card,
+form,
+label {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.form-card input,
+.form-card select,
+.form-card textarea,
+.search-box input,
+.filters input,
+.filters select {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  font-size: 16px !important;
+  line-height: 1.25;
+  transform: none !important;
+  -webkit-text-size-adjust: 100%;
+}
+
+.form-card input:focus,
+.form-card select:focus,
+.form-card textarea:focus,
+.search-box input:focus,
+.filters input:focus,
+.filters select:focus {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  font-size: 16px !important;
+  transform: none !important;
+}
+
+input[type="date"],
+input[type="number"],
+input[type="text"],
+select,
+textarea {
+  font-size: 16px !important;
+}
+
+/* Finition iPhone : garde le contour de focus visible à l'intérieur du champ */
+.form-card input:focus,
+.form-card select:focus,
+.form-card textarea:focus,
+.search-box input:focus,
+.filters input:focus,
+.filters select:focus {
+  outline: none !important;
+  border-color: var(--brand2) !important;
+  box-shadow: inset 0 0 0 1px var(--brand2) !important;
+}
+
+
+/* Finition 1 px iPhone : laisse une marge physique au champ pour que le focus soit visible des deux côtés */
+.form-card input:not([type="checkbox"]),
+.form-card select,
+.form-card textarea,
+.search-box input,
+.filters input,
+.filters select {
+  width: calc(100% - 2px) !important;
+  margin-left: 1px !important;
+  margin-right: 1px !important;
+}
+
+.form-card input:not([type="checkbox"]):focus,
+.form-card select:focus,
+.form-card textarea:focus,
+.search-box input:focus,
+.filters input:focus,
+.filters select:focus {
+  width: calc(100% - 2px) !important;
+  margin-left: 1px !important;
+  margin-right: 1px !important;
+  outline: none !important;
+  border-color: var(--brand2) !important;
+  box-shadow: inset 0 0 0 1px var(--brand2) !important;
+}
+
+.transaction-cancel-btn {
+  margin-top: 10px;
+}
+
+
+/* Annuler reste dans le même bloc que Enregistrer */
+.transaction-cancel-btn{
+  display:block;
+  width:100%;
+  margin:10px 0 0 !important;
+}
+
+/* Recherche : toutes les cases ont exactement la même largeur */
+.filters{
+  display:grid !important;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important;
+  gap:8px !important;
+  width:100% !important;
+}
+.filters > input,
+.filters > select{
+  display:block !important;
+  width:100% !important;
+  min-width:0 !important;
+  max-width:100% !important;
+  margin:0 !important;
+  box-sizing:border-box !important;
+  padding:11px !important;
+  border:1px solid var(--line) !important;
+  border-radius:10px !important;
+  background:#fff !important;
+  font-size:16px !important;
+}
+
+
+/* Sauvegarde */
+.backup-card .primary,
+.backup-card .secondary-btn{
+  width:100%;
+}
+
+
+/* Dépenses cliquables : un tap = modifier, double-tap = aucun zoom */
+.tx-editable{
+  cursor:pointer;
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
+  user-select:none;
+  -webkit-user-select:none;
+}
+.tx-editable:active{
+  transform:none !important;
+}
+.tx-editable:focus{
+  outline:none;
+  box-shadow:inset 0 0 0 1px var(--line);
+  border-radius:10px;
+}
+
+/* Empêche les conteneurs de s'élargir pendant l'interaction */
+.tx,
+.tx-main,
+.amount{
+  min-width:0;
+  max-width:100%;
+}
+
+
+/* iPhone : aucun zoom/débordement lors des taps */
+html, body, .app-shell, main {
+  width:100%;
+  max-width:100%;
+  overflow-x:hidden !important;
+  touch-action:manipulation;
+}
+.tx-editable,
+.tx-editable * {
+  touch-action:manipulation !important;
+}
+.tx-editable {
+  -webkit-tap-highlight-color:rgba(15,95,103,.08);
+}
