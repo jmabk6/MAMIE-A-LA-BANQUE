@@ -385,3 +385,5 @@ textarea {
   flex:0 0 auto;
   font-weight:700;
 }
+
+.secondary-btn.danger{border-color:#efb8b8!important;background:#fff1f1!important;color:#b83b3b!important;font-weight:800!important}
