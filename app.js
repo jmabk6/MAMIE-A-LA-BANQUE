@@ -2,6 +2,111 @@ const STORAGE_KEY = "mamie-banque-v2";
 const STORAGE_PREFIX = "mamie-banque";
 const BACKUP_PREFIX = "mamie-banque-backup-";
 
+const API_BASE = "https://mamie.hoteldereims.com";
+const API_TOKEN_KEY = "mamie-banque-api-token";
+let remoteReady = false;
+let remoteSaving = false;
+let remoteSaveAgain = false;
+
+async function apiFetch(path, options={}){
+  const token=localStorage.getItem(API_TOKEN_KEY);
+  const headers=new Headers(options.headers||{});
+  if(token) headers.set("Authorization","Bearer "+token);
+  if(options.body && !headers.has("Content-Type")) headers.set("Content-Type","application/json");
+  return fetch(API_BASE+path,{...options,headers,mode:"cors",cache:"no-store"});
+}
+
+async function loginRemote(){
+  let code=prompt("Code d’accès de Mamie à la banque :");
+  if(code===null) return false;
+  code=code.trim();
+  if(!code) return false;
+  try{
+    const r=await fetch(API_BASE+"/login.php",{
+      method:"POST",
+      mode:"cors",
+      cache:"no-store",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({password:code})
+    });
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok || !j.ok || !j.token){
+      alert("Code d’accès incorrect.");
+      return false;
+    }
+    localStorage.setItem(API_TOKEN_KEY,j.token);
+    return true;
+  }catch(e){
+    alert("Impossible de joindre la sauvegarde OVH. Vérifie la connexion Internet.");
+    return false;
+  }
+}
+
+async function loadRemote(){
+  for(let attempt=0;attempt<2;attempt++){
+    try{
+      const r=await apiFetch("/state.php");
+      if(r.status===401){
+        localStorage.removeItem(API_TOKEN_KEY);
+        if(!(await loginRemote())) return false;
+        continue;
+      }
+      const j=await r.json();
+      if(!r.ok || !j.ok || !isValidState(j.data)) throw new Error("Réponse serveur invalide");
+      state=cloneState(j.data);
+      localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); // cache local, jamais source principale
+      remoteReady=true;
+      return true;
+    }catch(e){
+      alert("La sauvegarde OVH n’est pas accessible. Aucune donnée ne sera modifiée tant que la connexion n’est pas rétablie.");
+      return false;
+    }
+  }
+  return false;
+}
+
+async function saveRemote(){
+  if(!remoteReady) return false;
+  if(remoteSaving){ remoteSaveAgain=true; return true; }
+  remoteSaving=true;
+  try{
+    const r=await apiFetch("/state.php",{
+      method:"POST",
+      body:JSON.stringify({data:state}),
+      keepalive:true
+    });
+    if(r.status===401){
+      remoteReady=false;
+      localStorage.removeItem(API_TOKEN_KEY);
+      alert("La connexion à la sauvegarde a expiré. Rouvre l’application et saisis le code d’accès.");
+      return false;
+    }
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok || !j.ok) throw new Error("Sauvegarde refusée");
+    return true;
+  }catch(e){
+    alert("ATTENTION : la modification est seulement sur cet iPhone pour l’instant. La sauvegarde MySQL a échoué. Ne supprime pas l’application et réessaie avec Internet.");
+    return false;
+  }finally{
+    remoteSaving=false;
+    if(remoteSaveAgain){
+      remoteSaveAgain=false;
+      saveRemote();
+    }
+  }
+}
+
+async function bootRemote(){
+  const ok=await loadRemote();
+  if(!ok){
+    document.getElementById("app").innerHTML=
+      '<div class="card"><h2>Connexion nécessaire</h2><p>Les données sont maintenant conservées sur le serveur OVH. Recharge la page pour te connecter avant toute saisie.</p></div>';
+    return;
+  }
+  render("home");
+}
+
+
 // We keep only a signature to recognize the old demonstration dataset.
 // No demonstration amounts/data can ever be reloaded by this version.
 const DEMO_SIGNATURE = {
@@ -60,10 +165,10 @@ function backupCurrentStorage(reason="avant-modification"){
 }
 
 function save(reason="avant-modification"){
-  // Toute modification persistée commence par une copie de sécurité de l'état
-  // actuellement enregistré sous mamie-banque-v2.
+  // Double sécurité : copie locale + MySQL. MySQL est désormais la source principale.
   backupCurrentStorage(reason);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  saveRemote();
 }
 
 function listMamieStorage(){
@@ -244,27 +349,9 @@ function occurrencesPerYear(r){
   if(f==="annual") return 1;
   return (r.months||[]).length || 1;
 }
-function recurringAmountForMonth(r, monthNumber){
-  const va=(r.variableAmounts && typeof r.variableAmounts==="object") ? r.variableAmounts : {};
-  const raw=va[String(monthNumber)];
-  if(raw!==undefined && raw!==null && raw!==""){
-    const n=Number(raw);
-    if(Number.isFinite(n) && n>=0) return n;
-  }
-  return Number(r.amount)||0;
-}
-
-function annualRecurringTotal(r){
-  const f=r.frequency||"monthly";
-  if(f==="monthly") return (Number(r.amount)||0)*12;
-  const months=(r.months||[]).map(Number).filter(m=>m>=1 && m<=12);
-  if(months.length) return months.reduce((s,m)=>s+recurringAmountForMonth(r,m),0);
-  return (Number(r.amount)||0)*occurrencesPerYear(r);
-}
-
 function monthlyProvision(r){
   if(r.type!=="prelevement" || (r.frequency||"monthly")==="monthly") return 0;
-  return annualRecurringTotal(r)/12;
+  return r.amount*occurrencesPerYear(r)/12;
 }
 function monthApplies(r, monthIndex){
   const f=r.frequency||"monthly";
@@ -340,8 +427,7 @@ function currentMonthContext(){
 function actualOrExpectedRecurringAmount(r, monthTx){
   const actual=monthTx.filter(t=>Number(t.recurringId)===Number(r.id) && t.type===r.type);
   if(actual.length) return actual.reduce((s,t)=>s+(Number(t.amount)||0),0);
-  const monthNumber=monthTx.length && monthTx[0].date ? Number(monthTx[0].date.slice(5,7)) : (new Date().getMonth()+1);
-  return recurringAmountForMonth(r,monthNumber);
+  return Number(r.amount)||0;
 }
 
 function homeView(){
@@ -492,27 +578,22 @@ function searchView(){
 
 function recurringCard(r){
   const provision=monthlyProvision(r);
-  const monthNums=(r.months||[]).map(Number);
-  const months=monthNums.map(m=>MONTH_NAMES[m-1]).join(", ");
-  const variable=!!(r.variableAmounts && Object.keys(r.variableAmounts).length);
-  const detail=variable && monthNums.length
-    ? `<div class="variable-summary">${monthNums.map(m=>`${MONTH_NAMES[m-1]} ${euro(recurringAmountForMonth(r,m))}`).join(" · ")}</div>`
-    : "";
+  const months=(r.months||[]).map(m=>MONTH_NAMES[m-1]).join(", ");
   return `
     <div class="recurring-item">
       <div>
         <strong>${escapeHtml(r.label)}</strong>
-        <div class="meta">${freqLabel(r)} · vers le ${r.day}${months?" · "+months:""}${variable?" · montants variables":""}</div>
-        ${detail}
+        <div class="meta">${freqLabel(r)} · vers le ${r.day} ${months? "· "+months:""}</div>
         ${provision?`<div class="provision-line">À provisionner : <strong>${euro(provision)}/mois</strong></div>`:""}
       </div>
       <div class="recurring-actions">
-        <strong class="${r.type==="recette"?"green":"blue"}">${variable?euro(annualRecurringTotal(r))+"/an":euro(r.amount)}</strong>
+        <strong class="${r.type==="recette"?"green":"blue"}">${euro(r.amount)}</strong>
         <button class="mini-btn" data-edit-recurring="${r.id}">Modifier</button>
         <button class="mini-btn danger" data-delete-recurring="${r.id}">Suppr.</button>
       </div>
     </div>`;
 }
+
 function settingsView(){
   const recettes=state.recurring.filter(r=>r.type==="recette");
   const prelevements=state.recurring.filter(r=>r.type==="prelevement");
@@ -546,31 +627,18 @@ function settingsView(){
 }
 
 function recurringFormView(type, id=null){
-  const r=id ? state.recurring.find(x=>String(x.id)===String(id)) : null;
+  const r=id ? state.recurring.find(x=>x.id===id) : null;
   const isRecette=type==="recette";
   const freq=(r&&r.frequency)||"monthly";
   const selected=(r&&r.months)||[];
-  const variableAmounts=(r&&r.variableAmounts)||{};
-  const existingVariable=Object.keys(variableAmounts).length>0;
-  const existingMode=r ? (existingVariable ? "variable" : "same") : "";
-
   return `
     <div class="card form-card">
-      <div class="section-title" style="margin-top:0">
-        <h2>${r?"Modifier":"Ajouter"} ${isRecette?"une recette":"un prélèvement"} récurrent${isRecette?"e":""}</h2>
-      </div>
-
+      <div class="section-title" style="margin-top:0"><h2>${r?"Modifier":"Ajouter"} ${isRecette?"une recette":"un prélèvement"} récurrent${isRecette?"e":""}</h2></div>
       <form id="recurringForm">
-        <input type="hidden" id="recurringId" value="${r?escapeHtml(String(r.id)):""}">
+        <input type="hidden" id="recurringId" value="${r?r.id:""}">
         <input type="hidden" id="recurringType" value="${type}">
-        <input type="hidden" id="initialAmountMode" value="${existingMode}">
-
-        <label>Libellé
-          <input id="recurringLabel" type="text" required
-                 value="${r?escapeHtml(r.label):""}"
-                 placeholder="${isRecette?"Pension retraite":"Charges appartement"}">
-        </label>
-
+        <label>Libellé<input id="recurringLabel" type="text" required value="${r?escapeHtml(r.label):""}" placeholder="${isRecette?"Pension retraite":"Assurance"}"></label>
+        <label>Montant à chaque échéance<input id="recurringAmount" type="number" inputmode="decimal" step="0.01" min="0" required value="${r?r.amount:""}"></label>
         <label>Fréquence
           <select id="recurringFrequency">
             <option value="monthly" ${freq==="monthly"?"selected":""}>Mensuel</option>
@@ -581,68 +649,82 @@ function recurringFormView(type, id=null){
             <option value="custom" ${freq==="custom"?"selected":""}>Mois personnalisés</option>
           </select>
         </label>
-
-        <label>Jour habituel du mois
-          <input id="recurringDay" type="number" min="1" max="31" required value="${r?r.day:1}">
-        </label>
-
-        <div id="monthlyAmountBox">
-          <label>Montant mensuel
-            <input id="recurringAmount" type="number" inputmode="decimal" step="0.01" min="0"
-                   value="${r?r.amount:""}" placeholder="0,00">
-          </label>
-        </div>
-
-        <div id="amountModeBox" class="amount-mode-box">
-          <div class="field-title">Montant</div>
-          <label class="amount-mode-row">
-            <input type="radio" name="amountMode" value="same" ${existingMode==="same"?"checked":""}>
-            <span><strong>Montant fixe</strong><small>Même montant à chaque échéance</small></span>
-          </label>
-          <label class="amount-mode-row">
-            <input type="radio" name="amountMode" value="variable" ${existingMode==="variable"?"checked":""}>
-            <span><strong>Montants variables</strong><small>Un montant différent à chaque échéance</small></span>
-          </label>
-        </div>
-
-        <div id="sameAmountBox">
-          <label>Montant à chaque échéance
-            <input id="sameRecurringAmount" type="number" inputmode="decimal" step="0.01" min="0"
-                   value="${r&&!existingVariable?r.amount:""}" placeholder="0,00">
-          </label>
-        </div>
-
+        <label>Jour habituel du mois<input id="recurringDay" type="number" min="1" max="31" required value="${r?r.day:1}"></label>
         <div id="monthsBox" class="months-box">
           <div class="field-title">Mois de prélèvement / versement</div>
-          <div class="month-grid variable-month-grid">
-            ${MONTH_NAMES.map((n,i)=>{
-              const m=i+1;
-              const checked=selected.includes(m);
-              const val=variableAmounts[String(m)] ?? "";
-              return `<div class="month-entry">
-                <label class="month-chip">
-                  <input class="month-check" type="checkbox" value="${m}" ${checked?"checked":""}>
-                  <span>${n}</span>
-                </label>
-                <div class="month-amount-wrap">
-                  <input class="month-amount" data-month="${m}" type="number"
-                         inputmode="decimal" step="0.01" min="0"
-                         value="${val}" placeholder="Montant de ${n}">
-                  <span>€</span>
-                </div>
-              </div>`;
-            }).join("")}
+          <div class="month-grid">
+            ${MONTH_NAMES.map((n,i)=>`<label class="month-chip"><input type="checkbox" value="${i+1}" ${selected.includes(i+1)?"checked":""}>${n}</label>`).join("")}
           </div>
-          <div class="meta">Coche les mois où l’échéance tombe.</div>
+          <div class="meta">Pour un semestriel, coche par exemple Mars et Septembre.</div>
         </div>
-
         <div id="provisionPreview" class="notice orange"></div>
         <button class="primary" type="submit">${r?"Enregistrer les modifications":"Ajouter"}</button>
       </form>
-
       <button class="secondary-btn" style="margin-top:10px" data-jump="settings">Annuler</button>
-    </div>`;
+    </div>
+  `;
 }
+
+
+function exportBackup(){
+  try{
+    const payload={
+      app:"Mamie à la banque",
+      version:1,
+      exportedAt:new Date().toISOString(),
+      storageKey:STORAGE_KEY,
+      data:JSON.parse(JSON.stringify(state))
+    };
+    const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    const d=new Date();
+    const stamp=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}_${String(d.getHours()).padStart(2,"0")}-${String(d.getMinutes()).padStart(2,"0")}`;
+    a.href=url;
+    a.download=`mamie-banque-sauvegarde-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    alert("Sauvegarde créée. Conserve bien le fichier téléchargé.");
+  }catch(err){
+    alert("Impossible de créer la sauvegarde : "+err.message);
+  }
+}
+
+function importBackupFile(file){
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=()=>{
+    try{
+      const parsed=JSON.parse(reader.result);
+      const incoming=parsed && parsed.data ? parsed.data : parsed;
+      if(!incoming || !Array.isArray(incoming.transactions) || !Array.isArray(incoming.recurring)){
+        throw new Error("Ce fichier n’est pas une sauvegarde Mamie à la banque valide.");
+      }
+
+      // Copie de sécurité de l'état actuel AVANT toute restauration.
+      const stamp=new Date().toISOString().replace(/[:.]/g,"-");
+      localStorage.setItem(`mamie-banque-backup-avant-restauration-${stamp}`, JSON.stringify(state));
+
+      const nbTx=incoming.transactions.length;
+      const nbRec=incoming.recurring.length;
+      if(!confirm(`Restaurer cette sauvegarde ?\n\n${nbTx} opération(s)\n${nbRec} récurrent(s)\n\nL’état actuel sera conservé dans une sauvegarde de sécurité.`)){
+        return;
+      }
+
+      state=JSON.parse(JSON.stringify(incoming));
+      localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
+      alert("Sauvegarde restaurée avec succès.");
+      render("home");
+    }catch(err){
+      alert(err.message || "Impossible de restaurer cette sauvegarde.");
+    }
+  };
+  reader.onerror=()=>alert("Impossible de lire le fichier.");
+  reader.readAsText(file);
+}
+
 function render(view=currentView, options={}){
   currentView=view;
   document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
@@ -654,28 +736,11 @@ function render(view=currentView, options={}){
   if(view==="settings") app.innerHTML=settingsView();
   if(view==="add") app.innerHTML=addView(options.type||"depense",!!options.unknown,null);
   if(view==="editTransaction") app.innerHTML=addView("depense",false,options.id);
-  if(view==="recurringForm") app.innerHTML=recurringFormView(options.type||"prelevement",options.id||null);
+  if(view==="recurringForm") app.innerHTML=recurringFormView(options.type,options.id||null);
   bind();
 }
 
 function bind(){
-
-  // Boutons Réglages : ajout de récurrents (délégation robuste)
-  document.querySelectorAll('[data-add-recurring]').forEach(btn=>{
-    btn.onclick=()=>{
-      const type=btn.dataset.addRecurring;
-      render("recurringForm",{type});
-    };
-  });
-  const addIncomeRecurring=document.getElementById("addIncomeRecurring");
-  if(addIncomeRecurring) addIncomeRecurring.onclick=()=>render("recurringForm",{type:"recette"});
-  const addDebitRecurring=document.getElementById("addDebitRecurring");
-  if(addDebitRecurring) addDebitRecurring.onclick=()=>render("recurringForm",{type:"prelevement"});
-  const addRecurringIncomeBtn=document.getElementById("addRecurringIncomeBtn");
-  if(addRecurringIncomeBtn) addRecurringIncomeBtn.onclick=()=>render("recurringForm",{type:"recette"});
-  const addRecurringDebitBtn=document.getElementById("addRecurringDebitBtn");
-  if(addRecurringDebitBtn) addRecurringDebitBtn.onclick=()=>render("recurringForm",{type:"prelevement"});
-
   document.querySelectorAll("[data-jump]").forEach(b=>b.onclick=()=>render(b.dataset.jump));
   document.querySelectorAll(".nav-btn").forEach(b=>b.onclick=()=>render(b.dataset.view));
   const add=document.getElementById("addBtn");
@@ -708,20 +773,27 @@ function bind(){
   };
   const exp=document.getElementById("exportBackupBtn"); if(exp) exp.onclick=exportCurrentBackup;
   const gen=document.getElementById("generateMonthBtn"); if(gen) gen.onclick=generateRecurringForMonth;
+  const exportBtn=document.getElementById("exportBackupBtn");
+  if(exportBtn) exportBtn.onclick=exportBackup;
+  const importBtn=document.getElementById("importBackupBtn");
+  const importFile=document.getElementById("importBackupFile");
+  if(importBtn && importFile){
+    importBtn.onclick=()=>importFile.click();
+    importFile.onchange=()=>{ importBackupFile(importFile.files && importFile.files[0]); importFile.value=""; };
+  }
 
 
   bindRecoveryPanel();
+
+  document.querySelectorAll("[data-add-recurring]").forEach(b=>b.onclick=()=>render("recurringForm",{type:b.dataset.addRecurring}));
   document.querySelectorAll("[data-edit-recurring]").forEach(b=>b.onclick=()=>{
-    const id=b.dataset.editRecurring;
-    const r=state.recurring.find(x=>String(x.id)===String(id));
-    if(r) render("recurringForm",{type:r.type,id:r.id});
+    const id=Number(b.dataset.editRecurring); const r=state.recurring.find(x=>x.id===id);
+    if(r) render("recurringForm",{type:r.type,id});
   });
   document.querySelectorAll("[data-delete-recurring]").forEach(b=>b.onclick=()=>{
-    const id=b.dataset.deleteRecurring;
+    const id=Number(b.dataset.deleteRecurring);
     if(confirm("Supprimer ce modèle récurrent ?")){
-      state.recurring=state.recurring.filter(x=>String(x.id)!==String(id));
-      save();
-      render("settings");
+      state.recurring=state.recurring.filter(x=>x.id!==id); save(); render("settings");
     }
   });
 
@@ -735,149 +807,38 @@ function bind(){
 
   const recurringForm=document.getElementById("recurringForm");
   if(recurringForm){
-    let amountMode=document.querySelector('input[name="amountMode"]:checked')?.value || "";
-
-    const selectedMonths=()=>[...document.querySelectorAll(".month-check:checked")].map(x=>Number(x.value));
-
     const refreshProvision=()=>{
       const type=document.getElementById("recurringType").value;
+      const amount=Number(document.getElementById("recurringAmount").value)||0;
       const frequency=document.getElementById("recurringFrequency").value;
-      const months=selectedMonths();
-
-      let amount=0;
-      let variableAmounts={};
-
-      if(frequency==="monthly"){
-        amount=Number(document.getElementById("recurringAmount").value)||0;
-      }else if(amountMode==="same"){
-        amount=Number(document.getElementById("sameRecurringAmount").value)||0;
-      }else if(amountMode==="variable"){
-        months.forEach(m=>{
-          const el=document.querySelector(`.month-amount[data-month="${m}"]`);
-          variableAmounts[String(m)]=Number(el?.value)||0;
-        });
-      }
-
-      const temp={type,frequency,months,amount,variableAmounts};
+      const months=[...document.querySelectorAll("#monthsBox input:checked")].map(x=>Number(x.value));
+      const temp={type,amount,frequency,months};
       const preview=document.getElementById("provisionPreview");
       const p=monthlyProvision(temp);
-
-      preview.style.display=(type==="prelevement" && frequency!=="monthly" && amountMode)?"block":"none";
-      preview.innerHTML=p
-        ? `Total annuel : <strong>${euro(annualRecurringTotal(temp))}</strong><br>À provisionner : <strong>${euro(p)}/mois</strong>`
-        : "";
+      preview.style.display=(type==="prelevement" && frequency!=="monthly")?"block":"none";
+      preview.innerHTML=p?`Budget : <strong>${euro(p)} par mois</strong> seront réservés pour cette dépense.`:"";
     };
-
-    const syncUI=()=>{
-      const frequency=document.getElementById("recurringFrequency").value;
-      const isMonthly=frequency==="monthly";
-
-      document.getElementById("monthlyAmountBox").style.display=isMonthly?"block":"none";
-      document.getElementById("amountModeBox").style.display=isMonthly?"none":"block";
-      document.getElementById("monthsBox").style.display=isMonthly?"none":"block";
-      document.getElementById("sameAmountBox").style.display=(!isMonthly && amountMode==="same")?"block":"none";
-
-      document.querySelectorAll(".month-entry").forEach(entry=>{
-        const check=entry.querySelector(".month-check");
-        const amountWrap=entry.querySelector(".month-amount-wrap");
-        amountWrap.style.display=(!isMonthly && amountMode==="variable" && check.checked)?"flex":"none";
-      });
-
-      refreshProvision();
-    };
-
-    document.getElementById("recurringFrequency").addEventListener("change",()=>{
-      const frequency=document.getElementById("recurringFrequency").value;
-      if(frequency==="monthly"){
-        amountMode="";
-      }else if(!document.getElementById("recurringId").value){
-        document.querySelectorAll('input[name="amountMode"]').forEach(r=>r.checked=false);
-        amountMode="";
-      }
-      syncUI();
-    });
-
-    document.querySelectorAll('input[name="amountMode"]').forEach(r=>{
-      r.addEventListener("change",()=>{
-        amountMode=r.value;
-        syncUI();
-      });
-    });
-
-    document.getElementById("recurringAmount").addEventListener("input",refreshProvision);
-    document.getElementById("sameRecurringAmount").addEventListener("input",refreshProvision);
-    document.querySelectorAll(".month-check").forEach(x=>x.addEventListener("change",syncUI));
-    document.querySelectorAll(".month-amount").forEach(x=>x.addEventListener("input",refreshProvision));
-
-    syncUI();
-
+    ["recurringAmount","recurringFrequency"].forEach(id=>document.getElementById(id).addEventListener("input",refreshProvision));
+    document.querySelectorAll("#monthsBox input").forEach(x=>x.addEventListener("change",refreshProvision));
+    refreshProvision();
     recurringForm.onsubmit=e=>{
       e.preventDefault();
-
       const idVal=document.getElementById("recurringId").value;
       const type=document.getElementById("recurringType").value;
-      const frequency=document.getElementById("recurringFrequency").value;
-      const months=selectedMonths();
-
-      let amount=0;
-      let variableAmounts={};
-
-      if(frequency==="monthly"){
-        amount=Number(document.getElementById("recurringAmount").value);
-        if(!Number.isFinite(amount) || amount<0){
-          alert("Indique un montant mensuel valide.");
-          return;
-        }
-      }else{
-        if(!amountMode){
-          alert("Choisis « Montant fixe » ou « Montants variables ».");
-          return;
-        }
-        if(months.length===0){
-          alert("Coche au moins un mois d’échéance.");
-          return;
-        }
-
-        if(amountMode==="same"){
-          amount=Number(document.getElementById("sameRecurringAmount").value);
-          if(!Number.isFinite(amount) || amount<0){
-            alert("Indique le montant de l’échéance.");
-            return;
-          }
-        }else{
-          for(const m of months){
-            const el=document.querySelector(`.month-amount[data-month="${m}"]`);
-            const n=Number(el?.value);
-            if(el.value==="" || !Number.isFinite(n) || n<0){
-              alert(`Indique le montant pour ${MONTH_NAMES[m-1]}.`);
-              return;
-            }
-            variableAmounts[String(m)]=n;
-          }
-        }
-      }
-
       const obj={
-        id:idVal || String(Date.now()),
+        id:idVal?Number(idVal):Date.now(),
         type,
         label:document.getElementById("recurringLabel").value.trim(),
-        amount,
+        amount:Number(document.getElementById("recurringAmount").value),
         day:Number(document.getElementById("recurringDay").value),
         payment:type==="recette"?"Virement":"Prélèvement",
-        frequency,
-        months:frequency==="monthly"?[]:months,
-        variableAmounts:frequency!=="monthly" && amountMode==="variable" ? variableAmounts : {}
+        frequency:document.getElementById("recurringFrequency").value,
+        months:[...document.querySelectorAll("#monthsBox input:checked")].map(x=>Number(x.value))
       };
-
       if(idVal){
-        const i=state.recurring.findIndex(x=>String(x.id)===String(idVal));
-        if(i>=0) state.recurring[i]=obj;
-      }else{
-        state.recurring.push(obj);
-      }
-
-      save();
-      render("settings");
+        const i=state.recurring.findIndex(x=>x.id===obj.id); if(i>=0) state.recurring[i]=obj;
+      } else state.recurring.push(obj);
+      save(); render("settings");
     };
   }
 
@@ -960,7 +921,7 @@ function generateRecurringForMonth(){
     if(!exists){
       state.transactions.push({
         id:Date.now()+Math.floor(Math.random()*100000),
-        date:d,label:r.label,type:r.type,amount:recurringAmountForMonth(r,m+1),payment:r.payment,
+        date:d,label:r.label,type:r.type,amount:r.amount,payment:r.payment,
         pointed:false,unknown:false,recurringId:r.id
       });
       added++;
@@ -998,4 +959,4 @@ function applySearch(){
   });
   document.getElementById("searchResults").innerHTML=renderTxList(list);
 }
-render();
+bootRemote();
