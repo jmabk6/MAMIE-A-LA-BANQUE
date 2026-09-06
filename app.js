@@ -462,10 +462,14 @@ function currentMonthContext(){
   return {y,m,prefix,monthTx,recurring};
 }
 
-function actualOrExpectedRecurringAmount(r, monthTx){
-  const actual=monthTx.filter(t=>Number(t.recurringId)===Number(r.id) && t.type===r.type);
+function actualOrExpectedRecurringAmount(r, monthTx, monthIndex){
+  const actual=monthTx.filter(t=>String(t.recurringId)===String(r.id) && t.type===r.type);
   if(actual.length) return actual.reduce((s,t)=>s+(Number(t.amount)||0),0);
-  return Number(r.amount)||0;
+
+  const occurrence=expectedRecurringForMonth(r,monthIndex);
+  if(occurrence) return Number(occurrence.amount)||0;
+
+  return 0;
 }
 
 function homeView(){
@@ -479,7 +483,7 @@ function homeView(){
   const extraPrelevements=monthTx.filter(t=>t.type==="prelevement" && !linkedRecurringIds.has(Number(t.recurringId)));
 
   const rec =
-    recurringRecettes.reduce((s,r)=>s+actualOrExpectedRecurringAmount(r,monthTx),0) +
+    recurringRecettes.reduce((s,r)=>s+actualOrExpectedRecurringAmount(r,monthTx,m),0) +
     extraRecettes.reduce((s,t)=>s+(Number(t.amount)||0),0);
 
   const dep=monthTx
@@ -487,13 +491,13 @@ function homeView(){
     .reduce((s,t)=>s+(Number(t.amount)||0),0);
 
   const pre =
-    recurringPrelevements.reduce((s,r)=>s+actualOrExpectedRecurringAmount(r,monthTx),0) +
+    recurringPrelevements.reduce((s,r)=>s+actualOrExpectedRecurringAmount(r,monthTx,m),0) +
     extraPrelevements.reduce((s,t)=>s+(Number(t.amount)||0),0);
 
   const monthlyPreBudget =
     recurring
       .filter(r=>r.type==="prelevement" && (r.frequency||"monthly")==="monthly")
-      .reduce((s,r)=>s+actualOrExpectedRecurringAmount(r,monthTx),0) +
+      .reduce((s,r)=>s+actualOrExpectedRecurringAmount(r,monthTx,m),0) +
     extraPrelevements.reduce((s,t)=>s+(Number(t.amount)||0),0);
 
   const provisions=recurring
