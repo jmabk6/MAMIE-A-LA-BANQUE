@@ -11,7 +11,7 @@ let remoteSaveAgain = false;
 async function apiFetch(path, options={}){
   const token=localStorage.getItem(API_TOKEN_KEY);
   const headers=new Headers(options.headers||{});
-  if(token) headers.set("Authorization","Bearer "+token);
+  if(token) headers.set("X-Mamie-Token",token);
   if(options.body && !headers.has("Content-Type")) headers.set("Content-Type","application/json");
   return fetch(API_BASE+path,{...options,headers,mode:"cors",cache:"no-store"});
 }
