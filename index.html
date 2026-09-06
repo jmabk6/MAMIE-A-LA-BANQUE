@@ -1,62 +1,15 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0f5f67" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="Mamie à la banque" />
-  <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="style.css?v=20260906-0225" />
-  <title>Mamie à la banque</title>
-</head>
-<body>
-  <div class="app-shell">
-    <header class="topbar">
-      <div>
-        <div class="eyebrow">Septembre 2026</div>
-        <h1>Mamie à la banque</h1>
-      </div>
-      <button class="icon-btn" id="seedBtn" aria-label="Charger des données d'exemple">↻</button>
-    </header>
-
-    <main id="app"></main>
-
-    <nav class="bottom-nav">
-      <button data-view="home" class="nav-btn active"><span>⌂</span><small>Accueil</small></button>
-      <button data-view="expenses" class="nav-btn"><span>−</span><small>Dépenses</small></button>
-      <button data-view="statement" class="nav-btn"><span>✓</span><small>Relevé</small></button>
-      <button data-view="search" class="nav-btn"><span>⌕</span><small>Recherche</small></button>
-      <button data-view="settings" class="nav-btn"><span>⚙</span><small>Réglages</small></button>
-    </nav>
-  </div>
-
-  <template id="transaction-form-template">
-    <form id="transactionForm" class="card form-card">
-      <div class="segmented" id="typeSegment">
-        <button type="button" data-type="depense" class="active">Dépense</button>
-        <button type="button" data-type="recette">Recette</button>
-        <button type="button" data-type="prelevement">Prélèvement</button>
-      </div>
-      <input type="hidden" id="type" value="depense" />
-      <label>Date<input id="date" type="date" required /></label>
-      <label>Enseigne / Libellé<input id="label" type="text" placeholder="Carrefour, EDF…" required /></label>
-      <label>Montant TTC<input id="amount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0,00" required /></label>
-      <label>Mode de paiement
-        <select id="payment">
-          <option>Carte bancaire</option>
-          <option>Prélèvement</option>
-          <option>Virement</option>
-          <option>Espèces</option>
-          <option>Chèque</option>
-        </select>
-      </label>
-      <label class="check-row"><input id="unknown" type="checkbox" /> Ajouté depuis le relevé / inconnu</label>
-      <button class="primary" type="submit">Enregistrer</button>
-    </form>
-  </template>
-
-  <script src="app.js?v=20260906-0225"></script>
-</body>
-</html>
+<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Récupération Mamie à la banque</title>
+<style>*{box-sizing:border-box}body{margin:0;background:#f4f7f7;color:#173737;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{max-width:680px;margin:auto;padding:18px 14px 40px}h1{font-size:24px}.warning,.ok,.card{border-radius:12px;padding:13px;margin:12px 0}.warning{background:#fff3cd;border:1px solid #ffe69c}.ok{background:#eaf7ef;border:1px solid #b8e0c5}.card{background:#fff;border:1px solid #dce7e7}button{width:100%;border:0;border-radius:11px;padding:13px;font-size:16px;font-weight:700;background:#116a6a;color:#fff;margin-top:8px}.secondary{background:#fff;color:#116a6a;border:1px solid #9cc4c4}.meta{font-size:13px;color:#607979;margin-top:5px;overflow-wrap:anywhere}.badge{display:inline-block;background:#edf4f4;border-radius:999px;padding:4px 8px;margin:5px 4px 0 0;font-size:12px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px;max-height:220px;overflow:auto;background:#f6f8f8;padding:8px;border-radius:8px}</style>
+</head><body><main><h1>🔎 Récupération</h1>
+<div class="warning"><strong>LECTURE SEULE.</strong><br>Cette page ne supprime, ne remplace et ne modifie aucune donnée.</div>
+<button id="scan">Rechercher toutes les données présentes</button><div id="summary"></div><div id="results"></div>
+<script>
+(function(){"use strict";
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function analyse(raw){let tx=null,rec=null;try{let p=JSON.parse(raw),d=(p&&p.data&&typeof p.data==="object")?p.data:p;if(d&&Array.isArray(d.transactions))tx=d.transactions.length;if(d&&Array.isArray(d.recurring))rec=d.recurring.length}catch(e){}return{tx,rec}}
+function dl(key,raw){let b=new Blob([raw],{type:"application/json"}),u=URL.createObjectURL(b),a=document.createElement("a");a.href=u;a.download="RECUP-"+key.replace(/[^a-z0-9_-]/gi,"_")+".json";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+document.getElementById("scan").onclick=()=>{let rows=[];for(let i=0;i<localStorage.length;i++){let key=localStorage.key(i),raw="";try{raw=localStorage.getItem(key)||""}catch(e){}rows.push({key,raw,...analyse(raw)})}rows.sort((a,b)=>(/mamie|banque/i.test(a.key)?0:1)-(/mamie|banque/i.test(b.key)?0:1)||a.key.localeCompare(b.key));document.getElementById("summary").innerHTML='<div class="ok"><strong>'+rows.length+' clé(s) trouvée(s).</strong><br>Cherche celles avec des opérations ou récurrents supérieurs à 0.</div>';let out=document.getElementById("results");out.innerHTML="";if(!rows.length){out.innerHTML='<div class="card"><strong>Aucune clé localStorage visible pour cette adresse.</strong></div>';return}rows.forEach((r,i)=>{let d=document.createElement("div");d.className="card";d.innerHTML='<strong>'+esc(r.key)+'</strong><div><span class="badge">Opérations : '+(r.tx===null?"inconnu":r.tx)+'</span><span class="badge">Récurrents : '+(r.rec===null?"inconnu":r.rec)+'</span><span class="badge">'+r.raw.length+' caractères</span></div><div class="meta">Aucune modification effectuée.</div><button class="secondary" data-i="'+i+'">Télécharger une copie</button><details><summary class="meta">Voir un aperçu</summary><pre>'+esc(r.raw.slice(0,5000))+'</pre></details>';out.appendChild(d)});document.querySelectorAll("[data-i]").forEach(b=>b.onclick=()=>{let r=rows[+b.dataset.i];dl(r.key,r.raw)})};
+})();
+</script></main></body></html>
