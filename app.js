@@ -652,11 +652,13 @@ function recurringCard(r){
     ? schedule.map(x=>`${x.day} ${MONTH_NAMES[x.month-1]} · ${euro(x.amount)}`).join(" · ")
     : "";
   const months=(r.months||[]).map(m=>MONTH_NAMES[m-1]).join(", ");
+  const monthlyVariable=r.type==="prelevement" && (r.frequency||"monthly")==="monthly" && !!r.monthlyVariable;
   return `
     <div class="recurring-item">
       <div>
         <strong>${escapeHtml(r.label)}</strong>
-        <div class="meta">${freqLabel(r)} ${scheduleText ? "· "+escapeHtml(scheduleText) : `· vers le ${r.day} ${months? "· "+months:""}`}</div>
+        <div class="meta">${monthlyVariable ? "Mensuel variable" : freqLabel(r)} ${scheduleText ? "· "+escapeHtml(scheduleText) : `· vers le ${r.day} ${months? "· "+months:""}`}</div>
+        ${monthlyVariable ? `<div class="provision-line">Montant habituel : <strong>${euro(r.amount)}/mois</strong></div>` : ""}
         ${provision?`<div class="provision-line">À provisionner : <strong>${euro(provision)}/mois</strong></div>`:""}
       </div>
       <div class="recurring-actions">
@@ -715,8 +717,16 @@ function recurringFormView(type, id=null){
         <input type="hidden" id="recurringType" value="${type}">
         <label>Libellé<input id="recurringLabel" type="text" required value="${r?escapeHtml(r.label):""}" placeholder="${isRecette?"Pension retraite":"Assurance"}" style="text-transform:uppercase"></label>
 
+        <div id="monthlyVariableBox" class="monthly-variable-box">
+          <label class="check-row monthly-variable-check">
+            <input id="monthlyVariable" type="checkbox" ${r&&r.monthlyVariable?"checked":""}>
+            Montant variable chaque mois
+          </label>
+          <div class="meta">Ex. téléphone : le montant habituel sert de budget, puis tu ajustes l'opération au montant réellement prélevé.</div>
+        </div>
+
         <div id="standardRecurringFields">
-          <label>Montant à chaque échéance<input id="recurringAmount" type="number" inputmode="decimal" step="0.01" min="0" value="${r?r.amount:""}"></label>
+          <label><span id="recurringAmountLabel">Montant à chaque échéance</span><input id="recurringAmount" type="number" inputmode="decimal" step="0.01" min="0" value="${r?r.amount:""}"></label>
         </div>
 
         <label>Fréquence
@@ -932,6 +942,9 @@ function bind(){
     const monthsBox=document.getElementById("monthsBox");
     const monthlyDayField=document.getElementById("monthlyDayField");
     const standardFields=document.getElementById("standardRecurringFields");
+    const monthlyVariableBox=document.getElementById("monthlyVariableBox");
+    const monthlyVariableEl=document.getElementById("monthlyVariable");
+    const recurringAmountLabel=document.getElementById("recurringAmountLabel");
 
     const getSchedule=()=>[...document.querySelectorAll(".schedule-row")].map(row=>({
       month:Number(row.querySelector(".schedule-month").value),
@@ -956,6 +969,13 @@ function bind(){
       monthlyDayField.style.display=variable?"none":"block";
       monthsBox.style.display=(type==="recette" && frequency!=="monthly")?"block":"none";
 
+      const canBeMonthlyVariable=(type==="prelevement" && frequency==="monthly");
+      monthlyVariableBox.style.display=canBeMonthlyVariable?"block":"none";
+      if(!canBeMonthlyVariable) monthlyVariableEl.checked=false;
+      recurringAmountLabel.textContent=(canBeMonthlyVariable && monthlyVariableEl.checked)
+        ? "Montant habituel / budget mensuel"
+        : "Montant à chaque échéance";
+
       const amount=Number(document.getElementById("recurringAmount").value)||0;
       const months=[...document.querySelectorAll("#monthsBox input:checked")].map(x=>Number(x.value));
       const temp={type,amount,frequency,months,schedule:variable?getSchedule():[]};
@@ -973,6 +993,7 @@ function bind(){
     };
     freqEl.addEventListener("change",refreshRecurringUi);
     document.getElementById("recurringAmount").addEventListener("input",refreshRecurringUi);
+    monthlyVariableEl.addEventListener("change",refreshRecurringUi);
     document.querySelectorAll("#monthsBox input").forEach(x=>x.addEventListener("change",refreshRecurringUi));
     bindScheduleRows();
     refreshRecurringUi();
@@ -1003,6 +1024,7 @@ function bind(){
         day:variable?1:Number(document.getElementById("recurringDay").value),
         payment:type==="recette"?"Virement":"Prélèvement",
         frequency,
+        monthlyVariable:type==="prelevement" && frequency==="monthly" && monthlyVariableEl.checked,
         months:variable?schedule.map(x=>x.month):[...document.querySelectorAll("#monthsBox input:checked")].map(x=>Number(x.value)),
         schedule
       };

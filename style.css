@@ -387,3 +387,22 @@ textarea {
 }
 
 .secondary-btn.danger{border-color:#efb8b8!important;background:#fff1f1!important;color:#b83b3b!important;font-weight:800!important}
+
+
+/* Prélèvement mensuel variable */
+.monthly-variable-box{
+  margin:12px 0 4px;
+  padding:12px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:#f8fbfb;
+}
+.monthly-variable-check{
+  margin:0!important;
+  font-size:14px!important;
+}
+.monthly-variable-check input{
+  width:20px!important;
+  height:20px!important;
+  flex:0 0 20px;
+}

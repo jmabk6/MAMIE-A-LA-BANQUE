@@ -36,3 +36,5 @@ L'application fonctionne sans serveur et stocke les données dans `localStorage`
 - Suppression d'une opération depuis sa fiche, avec confirmation.
 - Libellés enregistrés en MAJUSCULES.
 - Prélèvements non mensuels : chaque échéance possède son mois, son jour et son montant.
+
+- Prélèvement mensuel variable : montant habituel utilisé comme budget, montant réel ajustable chaque mois.
