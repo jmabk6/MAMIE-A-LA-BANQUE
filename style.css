@@ -216,3 +216,172 @@ textarea {
   min-width:0;
   max-width:100%;
 }
+
+/* Montants variables par échéance */
+.amount-mode-box{margin:14px 0}
+.radio-row{display:flex!important;align-items:center;gap:9px;margin:8px 0!important;font-size:14px!important;font-weight:600!important}
+.radio-row input{width:20px!important;height:20px;margin:0!important;flex:0 0 auto}
+.variable-month-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}
+.month-entry{min-width:0}
+.month-entry .month-chip{display:flex!important;align-items:center;justify-content:center;min-height:38px}
+.month-entry .month-amount{width:100%!important;min-width:0!important;margin-top:5px!important;padding:9px!important;text-align:center}
+.variable-summary{font-size:12px;color:var(--ink);margin-top:6px;line-height:1.45}
+
+
+/* Choix clair du type de montant */
+.amount-choice-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+.amount-choice{
+  display:flex!important;
+  align-items:flex-start;
+  gap:8px;
+  margin:0!important;
+  padding:11px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:#fff;
+  min-width:0;
+}
+.amount-choice input{
+  width:18px!important;
+  height:18px;
+  margin:1px 0 0!important;
+  flex:0 0 auto;
+}
+.amount-choice span{
+  min-width:0;
+}
+.amount-choice strong{
+  display:block;
+  font-size:13px;
+}
+.amount-choice small{
+  display:block;
+  margin-top:3px;
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.3;
+}
+
+
+/* ===== Formulaire récurrent iPhone - mise en page propre ===== */
+.amount-mode-box{
+  margin:16px 0 18px !important;
+}
+.amount-choice-grid{display:block !important;}
+.amount-choice{display:none !important;}
+
+.amount-mode-row{
+  width:100% !important;
+  max-width:100% !important;
+  min-width:0 !important;
+  box-sizing:border-box !important;
+  display:flex !important;
+  align-items:center !important;
+  gap:12px !important;
+  margin:8px 0 0 !important;
+  padding:12px 14px !important;
+  border:1px solid var(--line) !important;
+  border-radius:12px !important;
+  background:#fff !important;
+  overflow:hidden !important;
+}
+.amount-mode-row input[type="radio"]{
+  appearance:auto !important;
+  -webkit-appearance:radio !important;
+  width:22px !important;
+  height:22px !important;
+  min-width:22px !important;
+  max-width:22px !important;
+  padding:0 !important;
+  margin:0 !important;
+  flex:0 0 22px !important;
+}
+.amount-mode-row span{
+  display:block !important;
+  min-width:0 !important;
+  width:auto !important;
+  overflow:hidden !important;
+}
+.amount-mode-row strong{
+  display:block !important;
+  font-size:15px !important;
+  line-height:1.2 !important;
+  white-space:normal !important;
+}
+.amount-mode-row small{
+  display:block !important;
+  margin-top:2px !important;
+  font-size:12px !important;
+  line-height:1.25 !important;
+  color:var(--muted) !important;
+  white-space:normal !important;
+}
+
+.variable-month-grid{
+  display:grid !important;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important;
+  gap:8px !important;
+  width:100% !important;
+}
+.month-entry{
+  min-width:0 !important;
+  width:100% !important;
+}
+.month-chip{
+  width:100% !important;
+  min-width:0 !important;
+  max-width:100% !important;
+  box-sizing:border-box !important;
+  min-height:44px !important;
+  padding:8px 10px !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:flex-start !important;
+  gap:9px !important;
+  border:1px solid var(--line) !important;
+  border-radius:10px !important;
+  background:#fff !important;
+  overflow:hidden !important;
+}
+.month-chip input[type="checkbox"]{
+  appearance:auto !important;
+  -webkit-appearance:checkbox !important;
+  width:20px !important;
+  height:20px !important;
+  min-width:20px !important;
+  max-width:20px !important;
+  padding:0 !important;
+  margin:0 !important;
+  flex:0 0 20px !important;
+}
+.month-chip span{
+  min-width:0 !important;
+  font-size:14px !important;
+  font-weight:700 !important;
+  line-height:1 !important;
+}
+.month-amount-wrap{
+  display:none;
+  align-items:center;
+  gap:6px;
+  margin-top:5px;
+  width:100%;
+}
+.month-amount-wrap .month-amount{
+  display:block !important;
+  width:100% !important;
+  min-width:0 !important;
+  max-width:100% !important;
+  box-sizing:border-box !important;
+  margin:0 !important;
+  padding:9px !important;
+  text-align:left !important;
+}
+.month-amount-wrap > span{
+  flex:0 0 auto;
+  font-weight:700;
+}
