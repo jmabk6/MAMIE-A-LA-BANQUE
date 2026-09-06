@@ -3,61 +3,71 @@ const STORAGE_PREFIX = "mamie-banque";
 const BACKUP_PREFIX = "mamie-banque-backup-";
 
 const API_BASE = "https://mamie.hoteldereims.com";
-const API_TOKEN_KEY = "mamie-banque-api-token";
+const API_CODE_KEY = "mamie-banque-api-code";
 let remoteReady = false;
 let remoteSaving = false;
 let remoteSaveAgain = false;
 
-async function apiFetch(path, options={}){
-  const token=localStorage.getItem(API_TOKEN_KEY);
-  const headers=new Headers(options.headers||{});
-  if(token) headers.set("Authorization","Bearer "+token);
-  if(options.body && !headers.has("Content-Type")) headers.set("Content-Type","application/json");
-  return fetch(API_BASE+path,{...options,headers,mode:"cors",cache:"no-store"});
+function getApiCode(){
+  let code=localStorage.getItem(API_CODE_KEY) || "";
+  if(code) return code;
+
+  code=prompt("Code d’accès de Mamie à la banque :");
+  if(code===null) return "";
+  code=code.trim();
+
+  if(code) localStorage.setItem(API_CODE_KEY,code);
+  return code;
 }
 
-async function loginRemote(){
-  let code=prompt("Code d’accès de Mamie à la banque :");
-  if(code===null) return false;
-  code=code.trim();
-  if(!code) return false;
-  try{
-    const r=await fetch(API_BASE+"/login.php",{
-      method:"POST",
-      mode:"cors",
-      cache:"no-store",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({password:code})
-    });
-    const j=await r.json().catch(()=>({}));
-    if(!r.ok || !j.ok || !j.token){
-      alert("Code d’accès incorrect.");
-      return false;
-    }
-    localStorage.setItem(API_TOKEN_KEY,j.token);
-    return true;
-  }catch(e){
-    alert("Impossible de joindre la sauvegarde OVH. Vérifie la connexion Internet.");
-    return false;
+async function apiPost(action, extra={}){
+  const code=getApiCode();
+  if(!code) throw new Error("NO_CODE");
+
+  const body=new URLSearchParams();
+  body.set("action",action);
+  body.set("key",code);
+
+  Object.entries(extra).forEach(([k,v])=>body.set(k,v));
+
+  const r=await fetch(API_BASE+"/sync.php",{
+    method:"POST",
+    mode:"cors",
+    cache:"no-store",
+    body
+  });
+
+  const j=await r.json().catch(()=>({}));
+
+  if(r.status===401){
+    localStorage.removeItem(API_CODE_KEY);
+    throw new Error("BAD_CODE");
   }
+
+  if(!r.ok || !j.ok){
+    throw new Error(j.error || "REMOTE_ERROR");
+  }
+
+  return j;
 }
 
 async function loadRemote(){
   for(let attempt=0;attempt<2;attempt++){
     try{
-      const r=await apiFetch("/state.php");
-      if(r.status===401){
-        localStorage.removeItem(API_TOKEN_KEY);
-        if(!(await loginRemote())) return false;
-        continue;
-      }
-      const j=await r.json();
-      if(!r.ok || !j.ok || !isValidState(j.data)) throw new Error("Réponse serveur invalide");
+      const j=await apiPost("load");
+      if(!isValidState(j.data)) throw new Error("INVALID_STATE");
+
       state=cloneState(j.data);
-      localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); // cache local, jamais source principale
+      localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); // cache de secours uniquement
       remoteReady=true;
       return true;
     }catch(e){
+      if(e.message==="BAD_CODE" && attempt===0){
+        alert("Code d’accès incorrect. Réessaie.");
+        continue;
+      }
+      if(e.message==="NO_CODE") return false;
+
       alert("La sauvegarde OVH n’est pas accessible. Aucune donnée ne sera modifiée tant que la connexion n’est pas rétablie.");
       return false;
     }
@@ -67,25 +77,23 @@ async function loadRemote(){
 
 async function saveRemote(){
   if(!remoteReady) return false;
-  if(remoteSaving){ remoteSaveAgain=true; return true; }
+  if(remoteSaving){
+    remoteSaveAgain=true;
+    return true;
+  }
+
   remoteSaving=true;
+
   try{
-    const r=await apiFetch("/state.php",{
-      method:"POST",
-      body:JSON.stringify({data:state}),
-      keepalive:true
-    });
-    if(r.status===401){
-      remoteReady=false;
-      localStorage.removeItem(API_TOKEN_KEY);
-      alert("La connexion à la sauvegarde a expiré. Rouvre l’application et saisis le code d’accès.");
-      return false;
-    }
-    const j=await r.json().catch(()=>({}));
-    if(!r.ok || !j.ok) throw new Error("Sauvegarde refusée");
+    await apiPost("save",{data:JSON.stringify(state)});
     return true;
   }catch(e){
-    alert("ATTENTION : la modification est seulement sur cet iPhone pour l’instant. La sauvegarde MySQL a échoué. Ne supprime pas l’application et réessaie avec Internet.");
+    if(e.message==="BAD_CODE"){
+      remoteReady=false;
+      alert("Le code d’accès doit être saisi de nouveau. Recharge l’application.");
+    }else{
+      alert("ATTENTION : la sauvegarde MySQL a échoué. Ne supprime pas l’application et réessaie avec Internet.");
+    }
     return false;
   }finally{
     remoteSaving=false;
@@ -98,14 +106,15 @@ async function saveRemote(){
 
 async function bootRemote(){
   const ok=await loadRemote();
+
   if(!ok){
     document.getElementById("app").innerHTML=
-      '<div class="card"><h2>Connexion nécessaire</h2><p>Les données sont maintenant conservées sur le serveur OVH. Recharge la page pour te connecter avant toute saisie.</p></div>';
+      '<div class="card"><h2>Connexion nécessaire</h2><p>Recharge la page et saisis le code d’accès avant toute saisie.</p></div>';
     return;
   }
+
   render("home");
 }
-
 
 // We keep only a signature to recognize the old demonstration dataset.
 // No demonstration amounts/data can ever be reloaded by this version.
@@ -495,44 +504,71 @@ function expensesView(){
 }
 
 function addView(defaultType="depense", unknown=false, editId=null){
-  const tpl = document.getElementById("transaction-form-template").content.cloneNode(true);
-  const wrap = document.createElement("div");
-  wrap.appendChild(tpl);
-  const form = wrap.querySelector("#transactionForm");
-  const existing = editId!==null ? state.transactions.find(x=>Number(x.id)===Number(editId)) : null;
+  const existing = editId!==null
+    ? state.transactions.find(x=>String(x.id)===String(editId))
+    : null;
 
-  form.dataset.editId = existing ? String(existing.id) : "";
+  const tx = existing || {
+    id:"",
+    type:defaultType,
+    date:new Date().toISOString().slice(0,10),
+    label:"",
+    amount:"",
+    payment:defaultType==="prelevement" ? "Prélèvement" : defaultType==="recette" ? "Virement" : "Carte bancaire",
+    unknown:!!unknown
+  };
 
-  if(existing){
-    form.querySelector("#date").value = existing.date || "";
-    form.querySelector("#type").value = existing.type || "depense";
-    form.querySelector("#label").value = existing.label || "";
-    form.querySelector("#amount").value = Number(existing.amount);
-    form.querySelector("#payment").value = existing.payment || "Carte bancaire";
-    form.querySelector("#unknown").checked = !!existing.unknown;
-    form.querySelectorAll("#typeSegment button").forEach(b=>b.classList.toggle("active",b.dataset.type===existing.type));
+  const type = tx.type || "depense";
+  const payment = tx.payment || "Carte bancaire";
+  const payments=["Carte bancaire","Prélèvement","Virement","Espèces","Chèque"];
 
-    const submitBtn=form.querySelector('button[type="submit"]');
-    if(submitBtn) submitBtn.textContent="Enregistrer les modifications";
-  }else{
-    form.querySelector("#date").value = new Date().toISOString().slice(0,10);
-    form.querySelector("#type").value = defaultType;
-    form.querySelector("#unknown").checked = unknown;
-    form.querySelectorAll("#typeSegment button").forEach(b=>b.classList.toggle("active",b.dataset.type===defaultType));
-  }
+  return `
+    <form id="transactionForm" class="card form-card" data-edit-id="${existing ? escapeHtml(String(existing.id)) : ""}">
+      <div class="segmented" id="typeSegment">
+        <button type="button" data-type="depense" class="${type==="depense"?"active":""}">Dépense</button>
+        <button type="button" data-type="recette" class="${type==="recette"?"active":""}">Recette</button>
+        <button type="button" data-type="prelevement" class="${type==="prelevement"?"active":""}">Prélèvement</button>
+      </div>
 
-  const cancel=document.createElement("button");
-  cancel.type="button";
-  cancel.className="secondary-btn transaction-cancel-btn";
-  cancel.dataset.transactionCancel="1";
-  cancel.textContent="Annuler";
-  const submitBtn=form.querySelector('button[type="submit"]');
-  if(submitBtn) submitBtn.insertAdjacentElement("afterend", cancel);
-  else form.appendChild(cancel);
+      <input type="hidden" id="type" value="${escapeHtml(type)}" />
 
-  return wrap.innerHTML;
+      <label>Date
+        <input id="date" type="date" required value="${escapeHtml(tx.date || "")}" />
+      </label>
+
+      <label>Enseigne / Libellé
+        <input id="label" type="text" required
+               value="${escapeHtml(tx.label || "")}"
+               placeholder="Carrefour, EDF…" />
+      </label>
+
+      <label>Montant TTC
+        <input id="amount" type="number" inputmode="decimal" step="0.01" min="0" required
+               value="${tx.amount === "" ? "" : escapeHtml(String(tx.amount))}"
+               placeholder="0,00" />
+      </label>
+
+      <label>Mode de paiement
+        <select id="payment">
+          ${payments.map(p=>`<option ${p===payment?"selected":""}>${escapeHtml(p)}</option>`).join("")}
+        </select>
+      </label>
+
+      <label class="check-row">
+        <input id="unknown" type="checkbox" ${tx.unknown ? "checked" : ""} />
+        Ajouté depuis le relevé / inconnu
+      </label>
+
+      <button class="primary" type="submit">
+        ${existing ? "Enregistrer les modifications" : "Enregistrer"}
+      </button>
+      <button class="secondary-btn transaction-cancel-btn" type="button"
+              data-transaction-cancel="1" style="margin-top:10px">
+        Annuler
+      </button>
+    </form>
+  `;
 }
-
 function statementView(){
   const pending = sortedTx(state.transactions.filter(x=>!x.pointed));
   const unknown = pending.filter(x=>x.unknown).length;
@@ -751,7 +787,7 @@ function bind(){
   document.querySelectorAll("[data-edit-tx]").forEach(row=>{
     const openEdit=()=>{
       transactionReturnView = currentView==="editTransaction" ? "home" : currentView;
-      render("editTransaction",{id:Number(row.dataset.editTx)});
+      render("editTransaction",{id:row.dataset.editTx});
     };
     row.onclick=openEdit;
     row.ondblclick=e=>{ e.preventDefault(); e.stopPropagation(); };
@@ -799,8 +835,8 @@ function bind(){
 
   document.querySelectorAll("[data-point]").forEach(cb=>{
     cb.onchange=()=>{
-      const id=Number(cb.dataset.point);
-      const tx=state.transactions.find(x=>x.id===id);
+      const id=String(cb.dataset.point);
+      const tx=state.transactions.find(x=>String(x.id)===id);
       if(tx){ tx.pointed=true; save(); render("statement"); }
     };
   });
@@ -853,10 +889,10 @@ function bind(){
     });
     form.onsubmit=e=>{
       e.preventDefault();
-      const editId=form.dataset.editId ? Number(form.dataset.editId) : null;
+      const editId=form.dataset.editId ? String(form.dataset.editId) : null;
 
       if(editId!==null){
-        const i=state.transactions.findIndex(x=>Number(x.id)===editId);
+        const i=state.transactions.findIndex(x=>String(x.id)===String(editId));
         if(i>=0){
           const previous=state.transactions[i];
           state.transactions[i]={
