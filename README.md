@@ -30,3 +30,9 @@ L'application fonctionne sans serveur et stocke les données dans `localStorage`
 - Jour habituel et montant habituel
 - Bouton pour générer les récurrents du mois
 - Protection contre les doublons du même modèle dans le même mois
+
+
+## Corrections du 06/09/2026
+- Suppression d'une opération depuis sa fiche, avec confirmation.
+- Libellés enregistrés en MAJUSCULES.
+- Prélèvements non mensuels : chaque échéance possède son mois, son jour et son montant.

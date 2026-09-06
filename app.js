@@ -339,6 +339,31 @@ function statusBadge(tx){
 function sortedTx(list=state.transactions){ return [...list].sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id); }
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
 
+function normalizeLabel(value){
+  return String(value||"").trim().toLocaleUpperCase("fr-FR");
+}
+function recurringSchedule(r){
+  if(Array.isArray(r.schedule) && r.schedule.length){
+    return r.schedule
+      .map(x=>({month:Number(x.month),day:Number(x.day),amount:Number(x.amount)}))
+      .filter(x=>x.month>=1 && x.month<=12 && x.day>=1 && x.day<=31 && Number.isFinite(x.amount));
+  }
+  const months=(r.months||[]).map(Number).filter(m=>m>=1&&m<=12);
+  if((r.frequency||"monthly")==="monthly") return [];
+  const fallbackMonths=months.length ? months : Array.from({length:occurrencesPerYear(r)},(_,i)=>1+i*Math.max(1,Math.floor(12/occurrencesPerYear(r))));
+  return fallbackMonths.map(month=>({month,day:Number(r.day)||1,amount:Number(r.amount)||0}));
+}
+function expectedRecurringForMonth(r, monthIndex){
+  const schedule=recurringSchedule(r);
+  if(schedule.length){
+    const x=schedule.find(e=>e.month===monthIndex+1);
+    return x || null;
+  }
+  if(monthApplies(r,monthIndex)) return {month:monthIndex+1,day:Number(r.day)||1,amount:Number(r.amount)||0};
+  return null;
+}
+
+
 const MONTH_NAMES=["Jan","Fév","Mar","Avr","Mai","Juin","Juil","Août","Sep","Oct","Nov","Déc"];
 function freqLabel(r){
   const f=r.frequency||"monthly";
@@ -360,11 +385,15 @@ function occurrencesPerYear(r){
 }
 function monthlyProvision(r){
   if(r.type!=="prelevement" || (r.frequency||"monthly")==="monthly") return 0;
-  return r.amount*occurrencesPerYear(r)/12;
+  const schedule=recurringSchedule(r);
+  if(schedule.length) return schedule.reduce((sum,x)=>sum+(Number(x.amount)||0),0)/12;
+  return (Number(r.amount)||0)*occurrencesPerYear(r)/12;
 }
 function monthApplies(r, monthIndex){
   const f=r.frequency||"monthly";
   if(f==="monthly") return true;
+  const schedule=recurringSchedule(r);
+  if(schedule.length) return schedule.some(x=>x.month===monthIndex+1);
   const months=(r.months||[]).map(Number);
   if(months.length) return months.includes(monthIndex+1);
   const interval={bimonthly:2,quarterly:3,semiannual:6,annual:12}[f]||1;
@@ -539,7 +568,7 @@ function addView(defaultType="depense", unknown=false, editId=null){
       <label>Enseigne / Libellé
         <input id="label" type="text" required
                value="${escapeHtml(tx.label || "")}"
-               placeholder="Carrefour, EDF…" />
+               placeholder="CARREFOUR, EDF…" style="text-transform:uppercase" />
       </label>
 
       <label>Montant TTC
@@ -562,6 +591,10 @@ function addView(defaultType="depense", unknown=false, editId=null){
       <button class="primary" type="submit">
         ${existing ? "Enregistrer les modifications" : "Enregistrer"}
       </button>
+      ${existing ? `<button class="secondary-btn danger transaction-delete-btn" type="button"
+              data-transaction-delete="1" style="margin-top:10px">
+        Supprimer cette opération
+      </button>` : ""}
       <button class="secondary-btn transaction-cancel-btn" type="button"
               data-transaction-cancel="1" style="margin-top:10px">
         Annuler
@@ -614,16 +647,20 @@ function searchView(){
 
 function recurringCard(r){
   const provision=monthlyProvision(r);
+  const schedule=recurringSchedule(r);
+  const scheduleText=schedule.length
+    ? schedule.map(x=>`${x.day} ${MONTH_NAMES[x.month-1]} · ${euro(x.amount)}`).join(" · ")
+    : "";
   const months=(r.months||[]).map(m=>MONTH_NAMES[m-1]).join(", ");
   return `
     <div class="recurring-item">
       <div>
         <strong>${escapeHtml(r.label)}</strong>
-        <div class="meta">${freqLabel(r)} · vers le ${r.day} ${months? "· "+months:""}</div>
+        <div class="meta">${freqLabel(r)} ${scheduleText ? "· "+escapeHtml(scheduleText) : `· vers le ${r.day} ${months? "· "+months:""}`}</div>
         ${provision?`<div class="provision-line">À provisionner : <strong>${euro(provision)}/mois</strong></div>`:""}
       </div>
       <div class="recurring-actions">
-        <strong class="${r.type==="recette"?"green":"blue"}">${euro(r.amount)}</strong>
+        ${schedule.length ? "" : `<strong class="${r.type==="recette"?"green":"blue"}">${euro(r.amount)}</strong>`}
         <button class="mini-btn" data-edit-recurring="${r.id}">Modifier</button>
         <button class="mini-btn danger" data-delete-recurring="${r.id}">Suppr.</button>
       </div>
@@ -663,18 +700,25 @@ function settingsView(){
 }
 
 function recurringFormView(type, id=null){
-  const r=id ? state.recurring.find(x=>x.id===id) : null;
+  const r=id ? state.recurring.find(x=>String(x.id)===String(id)) : null;
   const isRecette=type==="recette";
   const freq=(r&&r.frequency)||"monthly";
   const selected=(r&&r.months)||[];
+  const schedule=r ? recurringSchedule(r) : [];
+  const variableMode=!isRecette && freq!=="monthly";
+  const scheduleRows=schedule.length ? schedule : [];
   return `
     <div class="card form-card">
       <div class="section-title" style="margin-top:0"><h2>${r?"Modifier":"Ajouter"} ${isRecette?"une recette":"un prélèvement"} récurrent${isRecette?"e":""}</h2></div>
       <form id="recurringForm">
         <input type="hidden" id="recurringId" value="${r?r.id:""}">
         <input type="hidden" id="recurringType" value="${type}">
-        <label>Libellé<input id="recurringLabel" type="text" required value="${r?escapeHtml(r.label):""}" placeholder="${isRecette?"Pension retraite":"Assurance"}"></label>
-        <label>Montant à chaque échéance<input id="recurringAmount" type="number" inputmode="decimal" step="0.01" min="0" required value="${r?r.amount:""}"></label>
+        <label>Libellé<input id="recurringLabel" type="text" required value="${r?escapeHtml(r.label):""}" placeholder="${isRecette?"Pension retraite":"Assurance"}" style="text-transform:uppercase"></label>
+
+        <div id="standardRecurringFields">
+          <label>Montant à chaque échéance<input id="recurringAmount" type="number" inputmode="decimal" step="0.01" min="0" value="${r?r.amount:""}"></label>
+        </div>
+
         <label>Fréquence
           <select id="recurringFrequency">
             <option value="monthly" ${freq==="monthly"?"selected":""}>Mensuel</option>
@@ -685,20 +729,47 @@ function recurringFormView(type, id=null){
             <option value="custom" ${freq==="custom"?"selected":""}>Mois personnalisés</option>
           </select>
         </label>
-        <label>Jour habituel du mois<input id="recurringDay" type="number" min="1" max="31" required value="${r?r.day:1}"></label>
+
+        <div id="monthlyDayField">
+          <label>Jour habituel du mois<input id="recurringDay" type="number" min="1" max="31" value="${r?r.day:1}"></label>
+        </div>
+
         <div id="monthsBox" class="months-box">
           <div class="field-title">Mois de prélèvement / versement</div>
           <div class="month-grid">
             ${MONTH_NAMES.map((n,i)=>`<label class="month-chip"><input type="checkbox" value="${i+1}" ${selected.includes(i+1)?"checked":""}>${n}</label>`).join("")}
           </div>
-          <div class="meta">Pour un semestriel, coche par exemple Mars et Septembre.</div>
         </div>
+
+        <div id="scheduleBox" class="months-box">
+          <div class="field-title">Échéances</div>
+          <div class="meta" style="margin-bottom:10px">Chaque échéance peut avoir sa propre date et son propre montant.</div>
+          <div id="scheduleRows">
+            ${scheduleRows.map(x=>scheduleRowHtml(x)).join("")}
+          </div>
+          <button class="secondary-btn" type="button" id="addScheduleRow">+ Ajouter une échéance</button>
+        </div>
+
         <div id="provisionPreview" class="notice orange"></div>
         <button class="primary" type="submit">${r?"Enregistrer les modifications":"Ajouter"}</button>
       </form>
       <button class="secondary-btn" style="margin-top:10px" data-jump="settings">Annuler</button>
     </div>
   `;
+}
+function scheduleRowHtml(x={month:1,day:1,amount:""}){
+  return `<div class="schedule-row" style="display:grid;grid-template-columns:1fr .75fr 1fr auto;gap:8px;align-items:end;margin-bottom:10px">
+    <label style="margin:0">Mois
+      <select class="schedule-month">${MONTH_NAMES.map((n,i)=>`<option value="${i+1}" ${Number(x.month)===i+1?"selected":""}>${n}</option>`).join("")}</select>
+    </label>
+    <label style="margin:0">Jour
+      <input class="schedule-day" type="number" min="1" max="31" value="${Number(x.day)||1}">
+    </label>
+    <label style="margin:0">Montant
+      <input class="schedule-amount" type="number" inputmode="decimal" step="0.01" min="0" value="${x.amount===""?"":Number(x.amount)}">
+    </label>
+    <button class="mini-btn danger remove-schedule-row" type="button">Suppr.</button>
+  </div>`;
 }
 
 
@@ -801,6 +872,18 @@ function bind(){
 
   const transactionCancel=document.querySelector("[data-transaction-cancel]");
   if(transactionCancel) transactionCancel.onclick=()=>render(transactionReturnView || "home");
+  const transactionDelete=document.querySelector("[data-transaction-delete]");
+  if(transactionDelete) transactionDelete.onclick=()=>{
+    const form=document.getElementById("transactionForm");
+    const editId=form && form.dataset.editId ? String(form.dataset.editId) : "";
+    const tx=state.transactions.find(x=>String(x.id)===editId);
+    if(!tx) return;
+    if(confirm(`Supprimer définitivement « ${tx.label} » de ${euro(Number(tx.amount)||0)} ?`)){
+      state.transactions=state.transactions.filter(x=>String(x.id)!==editId);
+      save("avant-suppression-operation");
+      render(transactionReturnView || "home");
+    }
+  };
   const scan=document.getElementById("scanStorageBtn");
   if(scan) scan.onclick=()=>{
     const panel=document.getElementById("recoveryPanel");
@@ -823,7 +906,7 @@ function bind(){
 
   document.querySelectorAll("[data-add-recurring]").forEach(b=>b.onclick=()=>render("recurringForm",{type:b.dataset.addRecurring}));
   document.querySelectorAll("[data-edit-recurring]").forEach(b=>b.onclick=()=>{
-    const id=Number(b.dataset.editRecurring); const r=state.recurring.find(x=>x.id===id);
+    const id=String(b.dataset.editRecurring); const r=state.recurring.find(x=>String(x.id)===id);
     if(r) render("recurringForm",{type:r.type,id});
   });
   document.querySelectorAll("[data-delete-recurring]").forEach(b=>b.onclick=()=>{
@@ -843,38 +926,90 @@ function bind(){
 
   const recurringForm=document.getElementById("recurringForm");
   if(recurringForm){
-    const refreshProvision=()=>{
-      const type=document.getElementById("recurringType").value;
-      const amount=Number(document.getElementById("recurringAmount").value)||0;
-      const frequency=document.getElementById("recurringFrequency").value;
-      const months=[...document.querySelectorAll("#monthsBox input:checked")].map(x=>Number(x.value));
-      const temp={type,amount,frequency,months};
-      const preview=document.getElementById("provisionPreview");
-      const p=monthlyProvision(temp);
-      preview.style.display=(type==="prelevement" && frequency!=="monthly")?"block":"none";
-      preview.innerHTML=p?`Budget : <strong>${euro(p)} par mois</strong> seront réservés pour cette dépense.`:"";
+    const freqEl=document.getElementById("recurringFrequency");
+    const typeEl=document.getElementById("recurringType");
+    const scheduleBox=document.getElementById("scheduleBox");
+    const monthsBox=document.getElementById("monthsBox");
+    const monthlyDayField=document.getElementById("monthlyDayField");
+    const standardFields=document.getElementById("standardRecurringFields");
+
+    const getSchedule=()=>[...document.querySelectorAll(".schedule-row")].map(row=>({
+      month:Number(row.querySelector(".schedule-month").value),
+      day:Number(row.querySelector(".schedule-day").value),
+      amount:Number(row.querySelector(".schedule-amount").value)
+    })).filter(x=>x.month>=1&&x.month<=12&&x.day>=1&&x.day<=31&&Number.isFinite(x.amount));
+
+    const bindScheduleRows=()=>{
+      document.querySelectorAll(".remove-schedule-row").forEach(btn=>btn.onclick=()=>{
+        btn.closest(".schedule-row").remove();
+        refreshRecurringUi();
+      });
+      document.querySelectorAll(".schedule-row input,.schedule-row select").forEach(el=>el.oninput=refreshRecurringUi);
     };
-    ["recurringAmount","recurringFrequency"].forEach(id=>document.getElementById(id).addEventListener("input",refreshProvision));
-    document.querySelectorAll("#monthsBox input").forEach(x=>x.addEventListener("change",refreshProvision));
-    refreshProvision();
+
+    const refreshRecurringUi=()=>{
+      const type=typeEl.value;
+      const frequency=freqEl.value;
+      const variable=(type==="prelevement" && frequency!=="monthly");
+      scheduleBox.style.display=variable?"block":"none";
+      standardFields.style.display=variable?"none":"block";
+      monthlyDayField.style.display=variable?"none":"block";
+      monthsBox.style.display=(type==="recette" && frequency!=="monthly")?"block":"none";
+
+      const amount=Number(document.getElementById("recurringAmount").value)||0;
+      const months=[...document.querySelectorAll("#monthsBox input:checked")].map(x=>Number(x.value));
+      const temp={type,amount,frequency,months,schedule:variable?getSchedule():[]};
+      const preview=document.getElementById("provisionPreview");
+      const provision=monthlyProvision(temp);
+      preview.style.display=(type==="prelevement" && frequency!=="monthly")?"block":"none";
+      preview.innerHTML=provision?`Budget : <strong>${euro(provision)} par mois</strong> seront réservés pour cette dépense.`:"";
+    };
+
+    document.getElementById("addScheduleRow").onclick=()=>{
+      const rows=document.getElementById("scheduleRows");
+      rows.insertAdjacentHTML("beforeend",scheduleRowHtml({month:1,day:1,amount:""}));
+      bindScheduleRows();
+      refreshRecurringUi();
+    };
+    freqEl.addEventListener("change",refreshRecurringUi);
+    document.getElementById("recurringAmount").addEventListener("input",refreshRecurringUi);
+    document.querySelectorAll("#monthsBox input").forEach(x=>x.addEventListener("change",refreshRecurringUi));
+    bindScheduleRows();
+    refreshRecurringUi();
+
     recurringForm.onsubmit=e=>{
       e.preventDefault();
       const idVal=document.getElementById("recurringId").value;
-      const type=document.getElementById("recurringType").value;
+      const type=typeEl.value;
+      const frequency=freqEl.value;
+      const variable=(type==="prelevement" && frequency!=="monthly");
+      const schedule=variable?getSchedule():[];
+
+      if(variable && schedule.length===0){
+        alert("Ajoute au moins une échéance.");
+        return;
+      }
+      const duplicateMonths=schedule.map(x=>x.month).filter((m,i,a)=>a.indexOf(m)!==i);
+      if(variable && duplicateMonths.length){
+        alert("Il ne peut y avoir qu’une échéance par mois.");
+        return;
+      }
+
       const obj={
         id:idVal?Number(idVal):Date.now(),
         type,
-        label:document.getElementById("recurringLabel").value.trim(),
-        amount:Number(document.getElementById("recurringAmount").value),
-        day:Number(document.getElementById("recurringDay").value),
+        label:normalizeLabel(document.getElementById("recurringLabel").value),
+        amount:variable?0:Number(document.getElementById("recurringAmount").value),
+        day:variable?1:Number(document.getElementById("recurringDay").value),
         payment:type==="recette"?"Virement":"Prélèvement",
-        frequency:document.getElementById("recurringFrequency").value,
-        months:[...document.querySelectorAll("#monthsBox input:checked")].map(x=>Number(x.value))
+        frequency,
+        months:variable?schedule.map(x=>x.month):[...document.querySelectorAll("#monthsBox input:checked")].map(x=>Number(x.value)),
+        schedule
       };
       if(idVal){
-        const i=state.recurring.findIndex(x=>x.id===obj.id); if(i>=0) state.recurring[i]=obj;
+        const i=state.recurring.findIndex(x=>String(x.id)===String(obj.id)); if(i>=0) state.recurring[i]=obj;
       } else state.recurring.push(obj);
-      save(); render("settings");
+      save("avant-modification-recurrent"); render("settings");
     };
   }
 
@@ -899,7 +1034,7 @@ function bind(){
             ...previous,
             type:form.querySelector("#type").value,
             date:form.querySelector("#date").value,
-            label:form.querySelector("#label").value.trim(),
+            label:normalizeLabel(form.querySelector("#label").value),
             amount:Number(form.querySelector("#amount").value),
             payment:form.querySelector("#payment").value,
             unknown:form.querySelector("#unknown").checked
@@ -914,7 +1049,7 @@ function bind(){
         id:Date.now(),
         type:form.querySelector("#type").value,
         date:form.querySelector("#date").value,
-        label:form.querySelector("#label").value.trim(),
+        label:normalizeLabel(form.querySelector("#label").value),
         amount:Number(form.querySelector("#amount").value),
         payment:form.querySelector("#payment").value,
         unknown:form.querySelector("#unknown").checked,
@@ -949,15 +1084,16 @@ function generateRecurringForMonth(){
   const y=now.getFullYear(), m=now.getMonth();
   let added=0;
   state.recurring.forEach(r=>{
-    if(!monthApplies(r,m)) return;
+    const occurrence=expectedRecurringForMonth(r,m);
+    if(!occurrence) return;
     const maxDay=new Date(y,m+1,0).getDate();
-    const day=Math.min(r.day,maxDay);
+    const day=Math.min(Number(occurrence.day)||1,maxDay);
     const d=`${y}-${String(m+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
-    const exists=state.transactions.some(t=>t.recurringId===r.id && t.date.slice(0,7)===d.slice(0,7));
+    const exists=state.transactions.some(t=>String(t.recurringId)===String(r.id) && t.date.slice(0,7)===d.slice(0,7));
     if(!exists){
       state.transactions.push({
         id:Date.now()+Math.floor(Math.random()*100000),
-        date:d,label:r.label,type:r.type,amount:r.amount,payment:r.payment,
+        date:d,label:normalizeLabel(r.label),type:r.type,amount:Number(occurrence.amount)||0,payment:r.payment,
         pointed:false,unknown:false,recurringId:r.id
       });
       added++;
