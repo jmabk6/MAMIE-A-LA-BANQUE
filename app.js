@@ -324,6 +324,7 @@ function exportCurrentBackup(){
 let state = load();
 let currentView = "home";
 let transactionReturnView = "home";
+let lastMonthKey = null;
 
 // ---------- Comptes ----------
 // Une opération ou un récurrent sans compte (saisi avant les comptes) appartient au compte Mamie.
@@ -340,7 +341,7 @@ function setAccount(a){
   currentAccount=a;
   try{ localStorage.setItem(ACCOUNT_PREF_KEY,a); }catch{}
   // Un formulaire en cours appartient à l'autre compte : on revient à l'accueil.
-  const lists=["home","expenses","statement","search","settings"];
+  const lists=["home","months","monthDetail","expenses","statement","search","settings"];
   render(lists.includes(currentView)?currentView:"home");
 }
 function openingBalance(acc=currentAccount){
@@ -637,6 +638,105 @@ function addView(defaultType="depense", unknown=false, editId=null){
     </form>
   `;
 }
+// ---------- Mois : soldes bancaires ----------
+// Le solde suit le compte en banque : les espèces n'y passent pas.
+const MONTH_FULL=["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+function monthTitle(key){ const [y,m]=key.split("-").map(Number); return `${MONTH_FULL[m-1]} ${y}`; }
+function datedAccountTx(){
+  return accountTx().filter(t=>!isLegacyDemoTransaction(t) && typeof t.date==="string" && /^\d{4}-\d{2}/.test(t.date));
+}
+function bankEffect(t){
+  if(t.payment==="Espèces") return 0;
+  const a=Number(t.amount)||0;
+  return t.type==="recette" ? a : -a;
+}
+function monthRange(){
+  const keys=datedAccountTx().map(t=>t.date.slice(0,7));
+  keys.push(localMonthKey());
+  const o=openingBalance(); if(o) keys.push(o.month);
+  keys.sort();
+  const out=[];
+  let [y,m]=keys[0].split("-").map(Number);
+  const last=keys[keys.length-1];
+  for(let k=keys[0]; k<=last; k=`${y}-${String(m).padStart(2,"0")}`){
+    out.push(k);
+    m++; if(m===13){ m=1; y++; }
+  }
+  return out;
+}
+function monthStartBalance(key){
+  // Solde au 1er du mois = solde de départ ± opérations entre le mois de départ et ce mois.
+  const o=openingBalance();
+  if(!o) return null;
+  let bal=o.amount;
+  datedAccountTx().forEach(t=>{
+    const k=t.date.slice(0,7);
+    if(k>=o.month && k<key) bal+=bankEffect(t);
+    else if(k>=key && k<o.month) bal-=bankEffect(t);
+  });
+  return bal;
+}
+function monthSummary(key){
+  const tx=datedAccountTx().filter(t=>t.date.slice(0,7)===key);
+  const start=monthStartBalance(key);
+  // Un virement entre comptes n'est ni une recette ni une dépense : il est compté à part.
+  const bank=t=>t.payment!=="Espèces" && !t.transferId;
+  const sum=f=>tx.filter(f).reduce((s,t)=>s+(Number(t.amount)||0),0);
+  return {
+    key, tx, start,
+    end: start===null ? null : start+tx.reduce((s,t)=>s+bankEffect(t),0),
+    recettes:sum(t=>bank(t)&&t.type==="recette"),
+    depenses:sum(t=>bank(t)&&t.type==="depense"),
+    prelevements:sum(t=>bank(t)&&t.type==="prelevement"),
+    especes:sum(t=>t.payment==="Espèces"&&t.type!=="recette"),
+    virements:tx.filter(t=>t.transferId).reduce((s,t)=>s+bankEffect(t),0)
+  };
+}
+function balanceText(v){ return v===null ? "—" : euro(v); }
+
+function monthsView(){
+  const byYear={};
+  monthRange().reverse().forEach(k=>{ (byYear[k.slice(0,4)] ||= []).push(k); });
+  return `
+    ${openingBalance() ? "" : `<div class="notice orange">Pour voir les soldes du ${ACCOUNTS[currentAccount]}, indique son solde de départ dans Réglages.</div>`}
+    ${Object.keys(byYear).sort().reverse().map(y=>`
+      <section class="section-title"><h2>${y}</h2></section>
+      <div class="card">
+        ${byYear[y].map(k=>{
+          const s=monthSummary(k);
+          return `<div class="month-row" data-open-month="${k}" role="button" tabindex="0">
+            <div class="month-name"><strong>${MONTH_FULL[Number(k.slice(5))-1]}</strong><div class="meta">${s.tx.length} opération(s)</div></div>
+            <div class="month-bal"><small>Début</small><span>${balanceText(s.start)}</span></div>
+            <div class="month-bal"><small>Fin</small><strong class="${s.end!==null&&s.end<0?"red":""}">${balanceText(s.end)}</strong></div>
+          </div>`;
+        }).join("")}
+      </div>`).join("")}
+  `;
+}
+
+function monthDetailView(key){
+  const s=monthSummary(key);
+  return `
+    <button class="link-btn back-btn" data-jump="months">‹ Tous les mois</button>
+    <section class="hero card">
+      <small>${monthTitle(key)} · ${ACCOUNTS[currentAccount]}</small>
+      <div class="month-hero">
+        <div><small>Solde début</small><div class="balance-sm">${balanceText(s.start)}</div></div>
+        <div><small>Solde fin</small><div class="balance-sm">${balanceText(s.end)}</div></div>
+      </div>
+    </section>
+    <section class="grid">
+      <div class="stat"><small>Recettes</small><strong class="green">+${euro(s.recettes)}</strong></div>
+      <div class="stat"><small>Dépenses</small><strong class="red">-${euro(s.depenses)}</strong></div>
+      <div class="stat"><small>Prélèvements</small><strong class="blue">-${euro(s.prelevements)}</strong></div>
+    </section>
+    ${s.virements?`<div class="notice" style="margin-top:12px">Virements entre comptes : <strong>${s.virements>0?"+":"-"}${euro(Math.abs(s.virements))}</strong> (ni recette ni dépense, compris dans le solde)</div>`:""}
+    ${s.especes?`<div class="notice" style="margin-top:12px">Espèces dépensées : <strong>${euro(s.especes)}</strong> (hors compte, non comptées dans le solde)</div>`:""}
+    <section class="section-title"><h2>Opérations</h2></section>
+    ${renderTxList(s.tx)}
+  `;
+}
+
 function statementView(){
   const pending = sortedTx(accountTx().filter(x=>!x.pointed));
   const unknown = pending.filter(x=>x.unknown).length;
@@ -890,11 +990,20 @@ function importBackupFile(file){
 
 function render(view=currentView, options={}){
   currentView=view;
-  document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
+  const navView = view==="monthDetail" ? "months" : view;
+  document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("active",b.dataset.view===navView));
+  // Les écrans Mois couvrent tous les mois : le mois en cours affiché en haut y prêterait à confusion.
+  const eyebrow=document.querySelector(".topbar .eyebrow");
+  if(eyebrow) eyebrow.hidden = navView==="months";
   document.querySelectorAll("[data-account]").forEach(b=>b.classList.toggle("active",b.dataset.account===currentAccount));
   const app=document.getElementById("app");
   if(view==="home") app.innerHTML=homeView();
   if(view==="expenses") app.innerHTML=expensesView();
+  if(view==="months") app.innerHTML=monthsView();
+  if(view==="monthDetail"){
+    if(options.month) lastMonthKey=options.month;
+    app.innerHTML=monthDetailView(lastMonthKey || localMonthKey());
+  }
   if(view==="statement") app.innerHTML=statementView();
   if(view==="search") app.innerHTML=searchView();
   if(view==="settings") app.innerHTML=settingsView();
@@ -906,6 +1015,11 @@ function render(view=currentView, options={}){
 
 function bind(){
   document.querySelectorAll("[data-account]").forEach(b=>b.onclick=()=>setAccount(b.dataset.account));
+  document.querySelectorAll("[data-open-month]").forEach(row=>{
+    const open=()=>render("monthDetail",{month:row.dataset.openMonth});
+    row.onclick=open;
+    row.onkeydown=e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); open(); } };
+  });
   const openingForm=document.getElementById("openingForm");
   if(openingForm) openingForm.onsubmit=e=>{
     e.preventDefault();

@@ -31,7 +31,7 @@ main{padding:0 14px 24px}
 .tx{display:grid;grid-template-columns:1fr auto;gap:8px;padding:13px 0;border-bottom:1px solid var(--line)}.tx:last-child{border-bottom:0}
 .tx-main strong{display:block}.meta{font-size:12px;color:var(--muted);margin-top:4px}.amount{font-weight:800}.badge{display:inline-block;padding:3px 7px;border-radius:999px;font-size:10px;font-weight:800;margin-left:6px}.badge.orange{background:#fff0df;color:#b65d00}.badge.green{background:#e6f6ec;color:#157741}.badge.gray{background:#edf1f2;color:#607177}
 .fab{width:100%;border:0;border-radius:16px;background:var(--brand);color:#fff;padding:15px;font-weight:800;margin:8px 0 16px}
-.bottom-nav{position:fixed;left:50%;transform:translateX(-50%);bottom:0;max-width:520px;width:100%;display:grid;grid-template-columns:repeat(5,1fr);background:#fff;border-top:1px solid var(--line);padding:8px 4px calc(8px + env(safe-area-inset-bottom));z-index:30}
+.bottom-nav{position:fixed;left:50%;transform:translateX(-50%);bottom:0;max-width:520px;width:100%;display:grid;grid-template-columns:repeat(6,1fr);background:#fff;border-top:1px solid var(--line);padding:8px 4px calc(8px + env(safe-area-inset-bottom));z-index:30}
 .nav-btn{border:0;background:none;color:#87979b;display:flex;flex-direction:column;align-items:center;gap:3px}.nav-btn span{font-size:22px}.nav-btn small{font-size:10px}.nav-btn.active{color:var(--brand);font-weight:800}
 .form-card label{display:block;font-size:13px;font-weight:700;margin:12px 0}.form-card input,.form-card select,.search-box input{width:100%;margin-top:6px;padding:13px;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--ink)}
 .segmented{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:#eef3f4;padding:4px;border-radius:13px}.segmented button{border:0;padding:10px 6px;border-radius:10px;background:transparent;font-size:12px;font-weight:800}.segmented button.active{background:#fff;color:var(--brand);box-shadow:0 2px 8px rgba(0,0,0,.07)}
@@ -427,3 +427,15 @@ textarea {
 .form-card input[type="month"]::-webkit-date-and-time-value{
   text-align:left;
 }
+
+/* Onglet Mois */
+.month-row{display:grid;grid-template-columns:1fr auto auto;gap:14px;align-items:center;padding:13px 0;border-bottom:1px solid var(--line);cursor:pointer;-webkit-tap-highlight-color:transparent}
+.month-row:last-child{border-bottom:0}
+.month-bal{text-align:right;min-width:0}
+.month-bal small{display:block;font-size:10px;color:var(--muted)}
+.month-bal span,.month-bal strong{font-size:14px;white-space:nowrap}
+.month-hero{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+.month-hero small{color:#d7efef}
+.balance-sm{font-size:22px;font-weight:800;margin-top:4px}
+.back-btn{padding:4px 2px 12px;font-size:15px}
+@media(max-width:380px){.month-row{gap:8px}.month-bal span,.month-bal strong{font-size:13px}}
