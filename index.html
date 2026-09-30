@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Mamie à la banque" />
   <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="style.css?v=20260930-global" />
+  <link rel="stylesheet" href="style.css?v=20260930-retour0609" />
   <title>Mamie à la banque</title>
 </head>
 <body>
@@ -18,18 +18,12 @@
         <div class="eyebrow">Septembre 2026</div>
         <h1>Mamie à la banque</h1>
       </div>
-      <button class="icon-btn" id="seedBtn" aria-label="Charger des données d'exemple">↻</button>
     </header>
-    <div class="account-switch" role="tablist" aria-label="Compte">
-      <button type="button" data-account="mamie">Compte Mamie</button>
-      <button type="button" data-account="commun">Compte commun</button>
-    </div>
 
     <main id="app"></main>
 
     <nav class="bottom-nav">
       <button data-view="home" class="nav-btn active"><span>⌂</span><small>Accueil</small></button>
-      <button data-view="months" class="nav-btn"><span>▦</span><small>Mois</small></button>
       <button data-view="expenses" class="nav-btn"><span>−</span><small>Dépenses</small></button>
       <button data-view="statement" class="nav-btn"><span>✓</span><small>Relevé</small></button>
       <button data-view="search" class="nav-btn"><span>⌕</span><small>Recherche</small></button>
@@ -43,7 +37,6 @@
         <button type="button" data-type="depense" class="active">Dépense</button>
         <button type="button" data-type="recette">Recette</button>
         <button type="button" data-type="prelevement">Prélèvement</button>
-        <button type="button" data-type="transfert">Virement entre comptes</button>
       </div>
       <input type="hidden" id="type" value="depense" />
       <label>Date<input id="date" type="date" required /></label>
@@ -63,6 +56,6 @@
     </form>
   </template>
 
-  <script src="app.js?v=20260930-global"></script>
+  <script src="app.js?v=20260930-retour0609"></script>
 </body>
 </html>
