@@ -412,3 +412,18 @@ textarea {
 .account-switch button{border:0;padding:11px 6px;border-radius:11px;background:transparent;font-size:14px;font-weight:800;color:#607177}
 .account-switch button.active{background:var(--brand);color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.1)}
 #typeSegment{grid-template-columns:repeat(2,1fr)}
+
+/* iPhone : Safari impose une largeur minimale aux champs date et mois, qui débordent de la carte */
+.form-card input[type="date"],
+.form-card input[type="month"]{
+  -webkit-appearance:none !important;
+  appearance:none !important;
+  display:block !important;
+  box-sizing:border-box !important;
+  min-height:48px;
+  text-align:left;
+}
+.form-card input[type="date"]::-webkit-date-and-time-value,
+.form-card input[type="month"]::-webkit-date-and-time-value{
+  text-align:left;
+}
