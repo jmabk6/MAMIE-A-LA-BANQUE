@@ -430,14 +430,14 @@ function monthApplies(r, monthIndex){
   const interval={bimonthly:2,quarterly:3,semiannual:6,annual:12}[f]||1;
   return monthIndex%interval===0;
 }
-function renderTxList(list){
+function renderTxList(list, showAccount=false){
   if(!list.length) return '<div class="empty">Aucune opération</div>';
   return `<div class="card">${sortedTx(list).map(tx=>`
     <div class="tx ${tx.type==="depense"?"tx-editable":""}"
          ${tx.type==="depense" ? `data-edit-tx="${tx.id}" role="button" tabindex="0" aria-label="Modifier ${escapeHtml(tx.label)}"` : ""}>
       <div class="tx-main">
         <strong>${escapeHtml(tx.label)} ${statusBadge(tx)}</strong>
-        <div class="meta">${fmtDate(tx.date)} · ${escapeHtml(tx.payment)}</div>
+        <div class="meta">${showAccount?`<span class="acc-tag">${accountOf(tx)==="mamie"?"MAMIE":"COMMUN"}</span> `:""}${fmtDate(tx.date)} · ${escapeHtml(tx.payment)}</div>
       </div>
       <div class="amount ${typeClass(tx)}">${tx.type==="recette"?"+":"-"}${euro(tx.amount)}</div>
     </div>`).join("")}</div>`;
@@ -640,20 +640,27 @@ function addView(defaultType="depense", unknown=false, editId=null){
 }
 // ---------- Mois : soldes bancaires ----------
 // Le solde suit le compte en banque : les espèces n'y passent pas.
+// L'écran Mois a ses propres onglets : un compte, ou « global » (les deux additionnés).
 const MONTH_FULL=["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+let monthsScope=null; // "mamie" | "commun" | "global" ; null = suit le compte choisi
+function currentMonthsScope(){ return monthsScope==="global" ? "global" : currentAccount; }
+function scopeAccounts(scope){ return scope==="global" ? Object.keys(ACCOUNTS) : [scope]; }
 function monthTitle(key){ const [y,m]=key.split("-").map(Number); return `${MONTH_FULL[m-1]} ${y}`; }
-function datedAccountTx(){
-  return accountTx().filter(t=>!isLegacyDemoTransaction(t) && typeof t.date==="string" && /^\d{4}-\d{2}/.test(t.date));
+function datedAccountTx(acc){
+  return state.transactions.filter(t=>accountOf(t)===acc && !isLegacyDemoTransaction(t) &&
+    typeof t.date==="string" && /^\d{4}-\d{2}/.test(t.date));
 }
 function bankEffect(t){
   if(t.payment==="Espèces") return 0;
   const a=Number(t.amount)||0;
   return t.type==="recette" ? a : -a;
 }
-function monthRange(){
-  const keys=datedAccountTx().map(t=>t.date.slice(0,7));
-  keys.push(localMonthKey());
-  const o=openingBalance(); if(o) keys.push(o.month);
+function monthRange(scope){
+  const keys=[localMonthKey()];
+  scopeAccounts(scope).forEach(acc=>{
+    datedAccountTx(acc).forEach(t=>keys.push(t.date.slice(0,7)));
+    const o=openingBalance(acc); if(o) keys.push(o.month);
+  });
   keys.sort();
   const out=[];
   let [y,m]=keys[0].split("-").map(Number);
@@ -664,26 +671,26 @@ function monthRange(){
   }
   return out;
 }
-function monthStartBalance(key){
+function monthStartBalance(key, acc){
   // Solde au 1er du mois = solde de départ ± opérations entre le mois de départ et ce mois.
-  const o=openingBalance();
+  const o=openingBalance(acc);
   if(!o) return null;
   let bal=o.amount;
-  datedAccountTx().forEach(t=>{
+  datedAccountTx(acc).forEach(t=>{
     const k=t.date.slice(0,7);
     if(k>=o.month && k<key) bal+=bankEffect(t);
     else if(k>=key && k<o.month) bal-=bankEffect(t);
   });
   return bal;
 }
-function monthSummary(key){
-  const tx=datedAccountTx().filter(t=>t.date.slice(0,7)===key);
-  const start=monthStartBalance(key);
+function accountMonthSummary(key, acc){
+  const tx=datedAccountTx(acc).filter(t=>t.date.slice(0,7)===key);
+  const start=monthStartBalance(key,acc);
   // Un virement entre comptes n'est ni une recette ni une dépense : il est compté à part.
   const bank=t=>t.payment!=="Espèces" && !t.transferId;
   const sum=f=>tx.filter(f).reduce((s,t)=>s+(Number(t.amount)||0),0);
   return {
-    key, tx, start,
+    acc, tx, start,
     end: start===null ? null : start+tx.reduce((s,t)=>s+bankEffect(t),0),
     recettes:sum(t=>bank(t)&&t.type==="recette"),
     depenses:sum(t=>bank(t)&&t.type==="depense"),
@@ -692,18 +699,44 @@ function monthSummary(key){
     virements:tx.filter(t=>t.transferId).reduce((s,t)=>s+bankEffect(t),0)
   };
 }
+function monthSummary(key, scope){
+  const parts=scopeAccounts(scope).map(acc=>accountMonthSummary(key,acc));
+  if(parts.length===1) return {...parts[0], key, parts};
+  // Global : les virements entre les deux comptes s'annulent, on ne les montre pas.
+  const add=f=>parts.reduce((s,p)=>s+p[f],0);
+  const missing=parts.some(p=>p.start===null);
+  return {
+    key, parts,
+    tx:parts.flatMap(p=>p.tx).filter(t=>!t.transferId),
+    start: missing ? null : add("start"),
+    end: missing ? null : add("end"),
+    recettes:add("recettes"), depenses:add("depenses"), prelevements:add("prelevements"),
+    especes:add("especes"), virements:0
+  };
+}
 function balanceText(v){ return v===null ? "—" : euro(v); }
+function scopeLabel(scope){ return scope==="global" ? "Global" : ACCOUNTS[scope]; }
+
+function monthsTabsHtml(scope){
+  const tabs=[["mamie","Cpt Mamie"],["commun","Cpt commun"],["global","Global"]];
+  return `<div class="account-switch months-tabs">
+    ${tabs.map(([k,l])=>`<button type="button" data-months-scope="${k}" class="${k===scope?"active":""}">${l}</button>`).join("")}
+  </div>`;
+}
 
 function monthsView(){
+  const scope=currentMonthsScope();
+  const missing=scopeAccounts(scope).filter(acc=>!openingBalance(acc)).map(acc=>ACCOUNTS[acc]);
   const byYear={};
-  monthRange().reverse().forEach(k=>{ (byYear[k.slice(0,4)] ||= []).push(k); });
+  monthRange(scope).reverse().forEach(k=>{ (byYear[k.slice(0,4)] ||= []).push(k); });
   return `
-    ${openingBalance() ? "" : `<div class="notice orange">Pour voir les soldes du ${ACCOUNTS[currentAccount]}, indique son solde de départ dans Réglages.</div>`}
+    ${monthsTabsHtml(scope)}
+    ${missing.length ? `<div class="notice orange">Pour voir les soldes, indique le solde de départ du ${missing.join(" et du ")} dans Réglages.</div>` : ""}
     ${Object.keys(byYear).sort().reverse().map(y=>`
       <section class="section-title"><h2>${y}</h2></section>
       <div class="card">
         ${byYear[y].map(k=>{
-          const s=monthSummary(k);
+          const s=monthSummary(k,scope);
           return `<div class="month-row" data-open-month="${k}" role="button" tabindex="0">
             <div class="month-name"><strong>${MONTH_FULL[Number(k.slice(5))-1]}</strong><div class="meta">${s.tx.length} opération(s)</div></div>
             <div class="month-bal"><small>Début</small><span>${balanceText(s.start)}</span></div>
@@ -715,15 +748,19 @@ function monthsView(){
 }
 
 function monthDetailView(key){
-  const s=monthSummary(key);
+  const scope=currentMonthsScope();
+  const s=monthSummary(key,scope);
+  const global=scope==="global";
   return `
+    ${monthsTabsHtml(scope)}
     <button class="link-btn back-btn" data-jump="months">‹ Tous les mois</button>
     <section class="hero card">
-      <small>${monthTitle(key)} · ${ACCOUNTS[currentAccount]}</small>
+      <small>${monthTitle(key)} · ${scopeLabel(scope)}</small>
       <div class="month-hero">
         <div><small>Solde début</small><div class="balance-sm">${balanceText(s.start)}</div></div>
         <div><small>Solde fin</small><div class="balance-sm">${balanceText(s.end)}</div></div>
       </div>
+      ${global ? `<div class="month-parts">${s.parts.map(p=>`<div><small>${ACCOUNTS[p.acc]}</small><span>${balanceText(p.start)} → ${balanceText(p.end)}</span></div>`).join("")}</div>` : ""}
     </section>
     <section class="grid">
       <div class="stat"><small>Recettes</small><strong class="green">+${euro(s.recettes)}</strong></div>
@@ -733,7 +770,7 @@ function monthDetailView(key){
     ${s.virements?`<div class="notice" style="margin-top:12px">Virements entre comptes : <strong>${s.virements>0?"+":"-"}${euro(Math.abs(s.virements))}</strong> (ni recette ni dépense, compris dans le solde)</div>`:""}
     ${s.especes?`<div class="notice" style="margin-top:12px">Espèces dépensées : <strong>${euro(s.especes)}</strong> (hors compte, non comptées dans le solde)</div>`:""}
     <section class="section-title"><h2>Opérations</h2></section>
-    ${renderTxList(s.tx)}
+    ${renderTxList(s.tx, global)}
   `;
 }
 
@@ -995,6 +1032,8 @@ function render(view=currentView, options={}){
   // Les écrans Mois couvrent tous les mois : le mois en cours affiché en haut y prêterait à confusion.
   const eyebrow=document.querySelector(".topbar .eyebrow");
   if(eyebrow) eyebrow.hidden = navView==="months";
+  const topSwitch=document.querySelector(".account-switch:not(.months-tabs)");
+  if(topSwitch) topSwitch.hidden = navView==="months";
   document.querySelectorAll("[data-account]").forEach(b=>b.classList.toggle("active",b.dataset.account===currentAccount));
   const app=document.getElementById("app");
   if(view==="home") app.innerHTML=homeView();
@@ -1015,6 +1054,16 @@ function render(view=currentView, options={}){
 
 function bind(){
   document.querySelectorAll("[data-account]").forEach(b=>b.onclick=()=>setAccount(b.dataset.account));
+  document.querySelectorAll("[data-months-scope]").forEach(b=>b.onclick=()=>{
+    const scope=b.dataset.monthsScope;
+    if(scope==="global") monthsScope="global";
+    else{
+      monthsScope=null;
+      currentAccount=scope;
+      try{ localStorage.setItem(ACCOUNT_PREF_KEY,scope); }catch{}
+    }
+    render(currentView);
+  });
   document.querySelectorAll("[data-open-month]").forEach(row=>{
     const open=()=>render("monthDetail",{month:row.dataset.openMonth});
     row.onclick=open;

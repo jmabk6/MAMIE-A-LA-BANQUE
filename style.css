@@ -439,3 +439,12 @@ textarea {
 .balance-sm{font-size:22px;font-weight:800;margin-top:4px}
 .back-btn{padding:4px 2px 12px;font-size:15px}
 @media(max-width:380px){.month-row{gap:8px}.month-bal span,.month-bal strong{font-size:13px}}
+
+/* Mois : onglets Mamie / Commun / Global */
+.months-tabs{grid-template-columns:repeat(3,1fr)}
+.months-tabs button{font-size:13px}
+.month-parts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.25)}
+.month-parts small{display:block;color:#d7efef;font-size:11px}
+.month-parts span{font-size:13px;font-weight:700}
+.acc-tag{display:inline-block;padding:1px 6px;border-radius:6px;background:#edf1f2;color:#607177;font-size:10px;font-weight:800}
+.account-switch[hidden]{display:none}
