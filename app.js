@@ -206,6 +206,23 @@ let currentView = "home";
 let transactionReturnView = "home";
 let lastMonthKey = null;
 
+// ---------- Comptes ----------
+// Les opérations sans compte (saisies avant l'arrivée des comptes) appartiennent au compte Mamie.
+const ACCOUNTS={mamie:"Compte Mamie", commun:"Compte commun"};
+// Clé volontairement hors du préfixe « mamie-banque » : ce n'est pas une sauvegarde.
+const ACCOUNT_PREF_KEY="mb-compte-actif";
+let currentAccount=(()=>{ try{ const v=localStorage.getItem(ACCOUNT_PREF_KEY); return ACCOUNTS[v]?v:"mamie"; }catch{ return "mamie"; } })();
+function accountOf(x){ return ACCOUNTS[x && x.account] ? x.account : "mamie"; }
+function otherAccount(a=currentAccount){ return a==="mamie"?"commun":"mamie"; }
+function accountTx(list=state.transactions){ return list.filter(t=>accountOf(t)===currentAccount); }
+function setAccount(a){
+  if(!ACCOUNTS[a]) return;
+  currentAccount=a;
+  try{ localStorage.setItem(ACCOUNT_PREF_KEY,a); }catch{}
+  const lists=["home","months","monthDetail","expenses","statement","search","settings"];
+  render(lists.includes(currentView)?currentView:"home");
+}
+
 // Neutralisation du bouton ↻ historique présent dans index.html.
 const legacySeedBtn=document.getElementById("seedBtn");
 if(legacySeedBtn){
@@ -312,12 +329,12 @@ function currentMonthContext(){
   const y=now.getFullYear();
   const m=now.getMonth();
   const prefix=`${y}-${String(m+1).padStart(2,"0")}`;
-  const monthTx=state.transactions.filter(t =>
+  const monthTx=accountTx().filter(t =>
     !isLegacyDemoTransaction(t) &&
     typeof t.date==="string" &&
     t.date.slice(0,7)===prefix
   );
-  const recurring=state.recurring.filter(r=>!isLegacyDemoRecurring(r));
+  const recurring=state.recurring.filter(r=>!isLegacyDemoRecurring(r) && accountOf(r)===currentAccount);
   return {y,m,prefix,monthTx,recurring};
 }
 
@@ -362,6 +379,7 @@ function homeView(){
   const available=rec-dep-monthlyPreBudget-provisions;
 
   return `
+    ${globalBalanceCard()}
     <section class="hero card">
       <small>Disponible à dépenser</small>
       <div class="balance">${euro(available)}</div>
@@ -400,21 +418,32 @@ function addView(defaultType="depense", unknown=false, editId=null){
 
   form.dataset.editId = existing ? String(existing.id) : "";
 
+  // Le formulaire est renvoyé en HTML (innerHTML) : seules les valeurs posées en attributs survivent.
+  const setVal=(sel,v)=>form.querySelector(sel).setAttribute("value",String(v));
+  const setPayment=v=>form.querySelectorAll("#payment option").forEach(o=>o.toggleAttribute("selected",o.textContent===v));
+  const setUnknown=v=>form.querySelector("#unknown").toggleAttribute("checked",!!v);
+
   if(existing){
-    form.querySelector("#date").value = existing.date || "";
-    form.querySelector("#type").value = existing.type || "depense";
-    form.querySelector("#label").value = existing.label || "";
-    form.querySelector("#amount").value = Number(existing.amount);
-    form.querySelector("#payment").value = existing.payment || "Carte bancaire";
-    form.querySelector("#unknown").checked = !!existing.unknown;
+    setVal("#date", existing.date || "");
+    setVal("#type", existing.type || "depense");
+    setVal("#label", existing.label || "");
+    setVal("#amount", Number(existing.amount));
+    setPayment(existing.payment || "Carte bancaire");
+    setUnknown(existing.unknown);
     form.querySelectorAll("#typeSegment button").forEach(b=>b.classList.toggle("active",b.dataset.type===existing.type));
+    // Une opération existante ne se transforme pas en virement entre comptes.
+    const transferBtn=form.querySelector('#typeSegment [data-type="transfert"]');
+    if(transferBtn) transferBtn.remove();
 
     const submitBtn=form.querySelector('button[type="submit"]');
     if(submitBtn) submitBtn.textContent="Enregistrer les modifications";
   }else{
-    form.querySelector("#date").value = new Date().toISOString().slice(0,10);
-    form.querySelector("#type").value = defaultType;
-    form.querySelector("#unknown").checked = unknown;
+    const n=new Date();
+    setVal("#date", `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}-${String(n.getDate()).padStart(2,"0")}`);
+    setVal("#type", defaultType);
+    if(defaultType==="prelevement") setPayment("Prélèvement");
+    if(defaultType==="recette") setPayment("Virement");
+    setUnknown(unknown);
     form.querySelectorAll("#typeSegment button").forEach(b=>b.classList.toggle("active",b.dataset.type===defaultType));
   }
 
@@ -435,24 +464,26 @@ function addView(defaultType="depense", unknown=false, editId=null){
 const MONTH_FULL=["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 function monthKey(y,m){ return `${y}-${String(m+1).padStart(2,"0")}`; }
 function monthTitle(key){ const [y,m]=key.split("-").map(Number); return `${MONTH_FULL[m-1]} ${y}`; }
-function realTx(){
-  return state.transactions.filter(t=>!isLegacyDemoTransaction(t) && typeof t.date==="string" && t.date.length>=7);
+function realTx(acc=currentAccount){
+  return state.transactions.filter(t=>accountOf(t)===acc).filter(t=>!isLegacyDemoTransaction(t) && typeof t.date==="string" && t.date.length>=7);
 }
 function bankEffect(t){
   if(t.payment==="Espèces") return 0;
   const a=Number(t.amount)||0;
   return t.type==="recette" ? a : -a;
 }
-function openingBalance(){
-  const o=state.openingBalance;
+// Soldes au 01/09/2026 donnés par l'utilisateur ; un solde enregistré dans Réglages l'emporte.
+const DEFAULT_OPENING={mamie:{month:"2026-09",amount:12329.75}, commun:{month:"2026-09",amount:4438.16}};
+function openingBalance(acc=currentAccount){
+  const o=(state.openingBalances||{})[acc] || DEFAULT_OPENING[acc];
   if(o && /^\d{4}-\d{2}$/.test(o.month)) return {month:o.month, amount:Number(o.amount)||0};
   return null;
 }
-function monthRange(){
+function monthRange(acc=currentAccount){
   const now=new Date();
-  const keys=realTx().map(t=>t.date.slice(0,7));
+  const keys=realTx(acc).map(t=>t.date.slice(0,7));
   keys.push(monthKey(now.getFullYear(),now.getMonth()));
-  const o=openingBalance(); if(o) keys.push(o.month);
+  const o=openingBalance(acc); if(o) keys.push(o.month);
   keys.sort();
   const out=[];
   let [y,m]=keys[0].split("-").map(Number); m--;
@@ -460,11 +491,11 @@ function monthRange(){
   while(monthKey(y,m)<=last){ out.push(monthKey(y,m)); m++; if(m===12){m=0;y++;} }
   return out;
 }
-function monthStartBalance(key){
+function monthStartBalance(key, acc=currentAccount){
   // Solde au 1er du mois = solde de départ ± opérations entre le mois de départ et ce mois.
-  const o=openingBalance() || {month:monthRange()[0], amount:0};
+  const o=openingBalance(acc) || {month:monthRange(acc)[0], amount:0};
   let bal=o.amount;
-  realTx().forEach(t=>{
+  realTx(acc).forEach(t=>{
     const k=t.date.slice(0,7);
     if(k>=o.month && k<key) bal+=bankEffect(t);
     else if(k>=key && k<o.month) bal-=bankEffect(t);
@@ -486,12 +517,34 @@ function monthSummary(key){
   };
 }
 
+function todayIso(){
+  const n=new Date();
+  return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}-${String(n.getDate()).padStart(2,"0")}`;
+}
+function balanceAt(acc, iso){
+  // Solde du compte à la fin de la journée « iso » (opérations datées jusqu'à ce jour inclus).
+  const key=iso.slice(0,7);
+  return monthStartBalance(key,acc) + realTx(acc)
+    .filter(t=>t.date.slice(0,7)===key && t.date<=iso)
+    .reduce((s,t)=>s+bankEffect(t),0);
+}
+function globalBalanceCard(){
+  const iso=todayIso();
+  const parts=Object.keys(ACCOUNTS).map(a=>({a, bal:balanceAt(a,iso)}));
+  const total=parts.reduce((s,p)=>s+p.bal,0);
+  return `<section class="card global-card">
+    <div class="global-head"><small>Solde global aujourd’hui</small><strong class="${total<0?"red":""}">${euro(total)}</strong></div>
+    <div class="global-parts">${parts.map(p=>`<div><small>${ACCOUNTS[p.a]}</small><span class="${p.bal<0?"red":""}">${euro(p.bal)}</span></div>`).join("")}</div>
+  </section>`;
+}
+
 function monthsView(){
   const o=openingBalance();
   const keys=monthRange().reverse();
   const byYear={};
   keys.forEach(k=>{ (byYear[k.slice(0,4)] ||= []).push(k); });
   return `
+    ${globalBalanceCard()}
     ${o?"":`<div class="notice orange">Indique le solde du compte au début d’un mois dans Réglages pour avoir des soldes justes.</div>`}
     ${Object.keys(byYear).sort().reverse().map(y=>`
       <section class="section-title"><h2>${y}</h2></section>
@@ -532,7 +585,7 @@ function monthDetailView(key){
 
 function statementView(){
   // Les espèces ne passent jamais par la banque : rien à pointer sur le relevé.
-  const pending = sortedTx(state.transactions.filter(x=>!x.pointed && x.payment!=="Espèces"));
+  const pending = sortedTx(accountTx().filter(x=>!x.pointed && x.payment!=="Espèces"));
   const unknown = pending.filter(x=>x.unknown).length;
   return `
     <div class="notice">Coche les opérations présentes sur le relevé bancaire.</div>
@@ -570,7 +623,7 @@ function searchView(){
         <input id="toFilter" type="text" inputmode="numeric" placeholder="Au (JJ/MM/AAAA)" autocomplete="off" />
       </div>
     </div>
-    <div id="searchResults">${renderTxList(state.transactions)}</div>
+    <div id="searchResults">${renderTxList(accountTx())}</div>
   `;
 }
 
@@ -593,12 +646,13 @@ function recurringCard(r){
 }
 
 function settingsView(){
-  const recettes=state.recurring.filter(r=>r.type==="recette");
-  const prelevements=state.recurring.filter(r=>r.type==="prelevement");
+  const mine=state.recurring.filter(r=>accountOf(r)===currentAccount);
+  const recettes=mine.filter(r=>r.type==="recette");
+  const prelevements=mine.filter(r=>r.type==="prelevement");
   const o=openingBalance();
   return `
     <div class="card form-card">
-      <div class="section-title" style="margin-top:0"><h2>Solde de départ du compte</h2></div>
+      <div class="section-title" style="margin-top:0"><h2>Solde de départ · ${ACCOUNTS[currentAccount]}</h2></div>
       <div class="meta">Le solde du relevé bancaire au 1er jour d’un mois. Tous les autres soldes sont calculés à partir de celui-ci.</div>
       <form id="openingForm">
         <label>Mois<input id="openingMonth" type="month" required value="${o?o.month:monthKey(new Date().getFullYear(),new Date().getMonth())}"></label>
@@ -740,6 +794,7 @@ function render(view=currentView, options={}){
   document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("active",b.dataset.view===navView));
   const eyebrow=document.querySelector(".topbar .eyebrow");
   if(eyebrow){ const n=new Date(); eyebrow.textContent=`${MONTH_FULL[n.getMonth()]} ${n.getFullYear()}`; }
+  document.querySelectorAll("[data-account]").forEach(b=>b.classList.toggle("active",b.dataset.account===currentAccount));
   const app=document.getElementById("app");
   if(view==="home") app.innerHTML=homeView();
   if(view==="expenses") app.innerHTML=expensesView();
@@ -765,6 +820,7 @@ function bind(){
   const stAdd=document.getElementById("statementAddBtn");
   if(stAdd) stAdd.onclick=()=>{ transactionReturnView="statement"; render("add",{type:"prelevement",unknown:true}); };
 
+  document.querySelectorAll("[data-account]").forEach(b=>b.onclick=()=>setAccount(b.dataset.account));
   document.querySelectorAll("[data-open-month]").forEach(row=>{
     const open=()=>render("monthDetail",{month:row.dataset.openMonth});
     row.onclick=open;
@@ -776,7 +832,7 @@ function bind(){
     const month=document.getElementById("openingMonth").value;
     const amount=Number(document.getElementById("openingAmount").value);
     if(!/^\d{4}-\d{2}$/.test(month) || isNaN(amount)) return;
-    state.openingBalance={month,amount};
+    state.openingBalances={...(state.openingBalances||{}), [currentAccount]:{month,amount}};
     save("avant-solde-depart");
     render("months");
   };
@@ -865,6 +921,7 @@ function bind(){
         amount:Number(document.getElementById("recurringAmount").value),
         day:Number(document.getElementById("recurringDay").value),
         payment:type==="recette"?"Virement":"Prélèvement",
+        account:idVal ? accountOf(state.recurring.find(x=>x.id===Number(idVal))) : currentAccount,
         frequency:document.getElementById("recurringFrequency").value,
         months:[...document.querySelectorAll("#monthsBox input:checked")].map(x=>Number(x.value))
       };
@@ -883,6 +940,12 @@ function bind(){
       form.querySelector("#type").value=b.dataset.type;
       if(b.dataset.type==="prelevement") form.querySelector("#payment").value="Prélèvement";
       if(b.dataset.type==="recette") form.querySelector("#payment").value="Virement";
+      const label=form.querySelector("#label");
+      const transferLabel=`Virement vers ${ACCOUNTS[otherAccount()]}`;
+      if(b.dataset.type==="transfert"){
+        form.querySelector("#payment").value="Virement";
+        if(!label.value.trim()) label.value=transferLabel;
+      }else if(label.value===transferLabel) label.value="";
     });
     form.onsubmit=e=>{
       e.preventDefault();
@@ -901,14 +964,37 @@ function bind(){
             payment:form.querySelector("#payment").value,
             unknown:form.querySelector("#unknown").checked
           };
+          // Un virement entre comptes existe des deux côtés : date et montant restent identiques.
+          if(previous.transferId){
+            const partner=state.transactions.find(x=>x.transferId===previous.transferId && x.id!==previous.id);
+            if(partner){ partner.date=state.transactions[i].date; partner.amount=state.transactions[i].amount; }
+          }
           save("avant-modification-depense");
           render(transactionReturnView || "home");
           return;
         }
       }
 
+      if(form.querySelector("#type").value==="transfert"){
+        // Une seule saisie, deux opérations : sortie sur ce compte, entrée sur l'autre.
+        const base=Date.now();
+        const date=form.querySelector("#date").value;
+        const amount=Number(form.querySelector("#amount").value);
+        const to=otherAccount();
+        state.transactions.push(
+          {id:base,type:"depense",date,amount,payment:"Virement",account:currentAccount,transferId:base,
+           label:form.querySelector("#label").value.trim()||`Virement vers ${ACCOUNTS[to]}`,unknown:false,pointed:false},
+          {id:base+1,type:"recette",date,amount,payment:"Virement",account:to,transferId:base,
+           label:`Virement de ${ACCOUNTS[currentAccount]}`,unknown:false,pointed:false}
+        );
+        save("avant-virement-entre-comptes");
+        render("home");
+        return;
+      }
+
       const tx={
         id:Date.now(),
+        account:currentAccount,
         type:form.querySelector("#type").value,
         date:form.querySelector("#date").value,
         label:form.querySelector("#label").value.trim(),
@@ -946,6 +1032,7 @@ function generateRecurringForMonth(){
   const y=now.getFullYear(), m=now.getMonth();
   let added=0;
   state.recurring.forEach(r=>{
+    if(accountOf(r)!==currentAccount) return;
     if(!monthApplies(r,m)) return;
     const maxDay=new Date(y,m+1,0).getDate();
     const day=Math.min(r.day,maxDay);
@@ -954,7 +1041,7 @@ function generateRecurringForMonth(){
     if(!exists){
       state.transactions.push({
         id:Date.now()+Math.floor(Math.random()*100000),
-        date:d,label:r.label,type:r.type,amount:r.amount,payment:r.payment,
+        date:d,label:r.label,type:r.type,amount:r.amount,payment:r.payment,account:currentAccount,
         pointed:false,unknown:false,recurringId:r.id
       });
       added++;
@@ -984,7 +1071,7 @@ function applySearch(){
   const max=parseFloat(document.getElementById("maxFilter").value);
   const from=frDateToIso(document.getElementById("fromFilter").value);
   const to=frDateToIso(document.getElementById("toFilter").value);
-  const list=state.transactions.filter(x=>{
+  const list=accountTx().filter(x=>{
     const matchesQ=!q || x.label.toLowerCase().includes(q) || String(x.amount).replace(".",",").includes(q) || String(x.amount).includes(q);
     return matchesQ && (!t||x.type===t) && (!p||x.payment===p) &&
       (isNaN(min)||x.amount>=min) && (isNaN(max)||x.amount<=max) &&

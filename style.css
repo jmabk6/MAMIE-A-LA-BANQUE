@@ -228,3 +228,18 @@ textarea {
 .balance-sm{font-size:22px;font-weight:800;margin-top:4px}
 .back-btn{padding:4px 2px 12px;font-size:15px}
 @media(max-width:380px){.month-row{gap:8px}.month-bal span,.month-bal strong{font-size:13px}}
+
+/* Comptes */
+.account-switch{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:#eef3f4;padding:4px;border-radius:14px;margin:0 0 14px}
+.account-switch button{border:0;padding:11px 6px;border-radius:11px;background:transparent;font-size:14px;font-weight:800;color:#607177}
+.account-switch button.active{background:var(--brand);color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.1)}
+#typeSegment{grid-template-columns:repeat(2,1fr)}
+
+/* Solde global */
+.global-card{padding:14px 16px}
+.global-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.global-head small{color:var(--muted);font-weight:700}
+.global-head strong{font-size:22px}
+.global-parts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.global-parts small{display:block;font-size:11px;color:var(--muted)}
+.global-parts span{font-weight:800;font-size:15px}

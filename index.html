@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Mamie à la banque" />
   <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="style.css?v=20260930-mois" />
+  <link rel="stylesheet" href="style.css?v=20260930-global" />
   <title>Mamie à la banque</title>
 </head>
 <body>
@@ -20,6 +20,10 @@
       </div>
       <button class="icon-btn" id="seedBtn" aria-label="Charger des données d'exemple">↻</button>
     </header>
+    <div class="account-switch" role="tablist" aria-label="Compte">
+      <button type="button" data-account="mamie">Compte Mamie</button>
+      <button type="button" data-account="commun">Compte commun</button>
+    </div>
 
     <main id="app"></main>
 
@@ -39,6 +43,7 @@
         <button type="button" data-type="depense" class="active">Dépense</button>
         <button type="button" data-type="recette">Recette</button>
         <button type="button" data-type="prelevement">Prélèvement</button>
+        <button type="button" data-type="transfert">Virement entre comptes</button>
       </div>
       <input type="hidden" id="type" value="depense" />
       <label>Date<input id="date" type="date" required /></label>
@@ -58,6 +63,6 @@
     </form>
   </template>
 
-  <script src="app.js?v=20260930-mois"></script>
+  <script src="app.js?v=20260930-global"></script>
 </body>
 </html>
