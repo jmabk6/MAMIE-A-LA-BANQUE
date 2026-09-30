@@ -204,6 +204,7 @@ function exportCurrentBackup(){
 let state = load();
 let currentView = "home";
 let transactionReturnView = "home";
+let lastMonthKey = null;
 
 // Neutralisation du bouton ↻ historique présent dans index.html.
 const legacySeedBtn=document.getElementById("seedBtn");
@@ -429,6 +430,106 @@ function addView(defaultType="depense", unknown=false, editId=null){
   return wrap.innerHTML;
 }
 
+// ---------- Mois : soldes bancaires ----------
+// Le solde suit le compte en banque : les espèces n'y passent pas.
+const MONTH_FULL=["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+function monthKey(y,m){ return `${y}-${String(m+1).padStart(2,"0")}`; }
+function monthTitle(key){ const [y,m]=key.split("-").map(Number); return `${MONTH_FULL[m-1]} ${y}`; }
+function realTx(){
+  return state.transactions.filter(t=>!isLegacyDemoTransaction(t) && typeof t.date==="string" && t.date.length>=7);
+}
+function bankEffect(t){
+  if(t.payment==="Espèces") return 0;
+  const a=Number(t.amount)||0;
+  return t.type==="recette" ? a : -a;
+}
+function openingBalance(){
+  const o=state.openingBalance;
+  if(o && /^\d{4}-\d{2}$/.test(o.month)) return {month:o.month, amount:Number(o.amount)||0};
+  return null;
+}
+function monthRange(){
+  const now=new Date();
+  const keys=realTx().map(t=>t.date.slice(0,7));
+  keys.push(monthKey(now.getFullYear(),now.getMonth()));
+  const o=openingBalance(); if(o) keys.push(o.month);
+  keys.sort();
+  const out=[];
+  let [y,m]=keys[0].split("-").map(Number); m--;
+  const last=keys[keys.length-1];
+  while(monthKey(y,m)<=last){ out.push(monthKey(y,m)); m++; if(m===12){m=0;y++;} }
+  return out;
+}
+function monthStartBalance(key){
+  // Solde au 1er du mois = solde de départ ± opérations entre le mois de départ et ce mois.
+  const o=openingBalance() || {month:monthRange()[0], amount:0};
+  let bal=o.amount;
+  realTx().forEach(t=>{
+    const k=t.date.slice(0,7);
+    if(k>=o.month && k<key) bal+=bankEffect(t);
+    else if(k>=key && k<o.month) bal-=bankEffect(t);
+  });
+  return bal;
+}
+function monthSummary(key){
+  const tx=realTx().filter(t=>t.date.slice(0,7)===key);
+  const start=monthStartBalance(key);
+  const sum=(f)=>tx.filter(f).reduce((s,t)=>s+(Number(t.amount)||0),0);
+  const bank=t=>t.payment!=="Espèces";
+  return {
+    key, tx, start,
+    end:start+tx.reduce((s,t)=>s+bankEffect(t),0),
+    recettes:sum(t=>bank(t)&&t.type==="recette"),
+    depenses:sum(t=>bank(t)&&t.type==="depense"),
+    prelevements:sum(t=>bank(t)&&t.type==="prelevement"),
+    especes:sum(t=>!bank(t)&&t.type!=="recette")
+  };
+}
+
+function monthsView(){
+  const o=openingBalance();
+  const keys=monthRange().reverse();
+  const byYear={};
+  keys.forEach(k=>{ (byYear[k.slice(0,4)] ||= []).push(k); });
+  return `
+    ${o?"":`<div class="notice orange">Indique le solde du compte au début d’un mois dans Réglages pour avoir des soldes justes.</div>`}
+    ${Object.keys(byYear).sort().reverse().map(y=>`
+      <section class="section-title"><h2>${y}</h2></section>
+      <div class="card">
+        ${byYear[y].map(k=>{
+          const s=monthSummary(k);
+          return `<div class="month-row" data-open-month="${k}" role="button" tabindex="0">
+            <div class="month-name"><strong>${MONTH_FULL[Number(k.slice(5))-1]}</strong><div class="meta">${s.tx.length} opération(s)</div></div>
+            <div class="month-bal"><small>Début</small><span>${euro(s.start)}</span></div>
+            <div class="month-bal"><small>Fin</small><strong class="${s.end<0?"red":""}">${euro(s.end)}</strong></div>
+          </div>`;
+        }).join("")}
+      </div>`).join("")}
+  `;
+}
+
+function monthDetailView(key){
+  const s=monthSummary(key);
+  return `
+    <button class="link-btn back-btn" data-jump="months">‹ Tous les mois</button>
+    <section class="hero card">
+      <small>${monthTitle(key)}</small>
+      <div class="month-hero">
+        <div><small>Solde début</small><div class="balance-sm">${euro(s.start)}</div></div>
+        <div><small>Solde fin</small><div class="balance-sm">${euro(s.end)}</div></div>
+      </div>
+    </section>
+    <section class="grid">
+      <div class="stat"><small>Recettes</small><strong class="green">+${euro(s.recettes)}</strong></div>
+      <div class="stat"><small>Dépenses</small><strong class="red">-${euro(s.depenses)}</strong></div>
+      <div class="stat"><small>Prélèvements</small><strong class="blue">-${euro(s.prelevements)}</strong></div>
+    </section>
+    ${s.especes?`<div class="notice" style="margin-top:12px">Espèces dépensées : <strong>${euro(s.especes)}</strong> (hors compte, non comptées dans le solde)</div>`:""}
+    <section class="section-title"><h2>Opérations</h2></section>
+    ${renderTxList(s.tx)}
+  `;
+}
+
 function statementView(){
   // Les espèces ne passent jamais par la banque : rien à pointer sur le relevé.
   const pending = sortedTx(state.transactions.filter(x=>!x.pointed && x.payment!=="Espèces"));
@@ -494,7 +595,18 @@ function recurringCard(r){
 function settingsView(){
   const recettes=state.recurring.filter(r=>r.type==="recette");
   const prelevements=state.recurring.filter(r=>r.type==="prelevement");
+  const o=openingBalance();
   return `
+    <div class="card form-card">
+      <div class="section-title" style="margin-top:0"><h2>Solde de départ du compte</h2></div>
+      <div class="meta">Le solde du relevé bancaire au 1er jour d’un mois. Tous les autres soldes sont calculés à partir de celui-ci.</div>
+      <form id="openingForm">
+        <label>Mois<input id="openingMonth" type="month" required value="${o?o.month:monthKey(new Date().getFullYear(),new Date().getMonth())}"></label>
+        <label>Solde au 1er du mois<input id="openingAmount" type="number" inputmode="decimal" step="0.01" required value="${o?o.amount:""}" placeholder="0,00"></label>
+        <button class="primary" type="submit">Enregistrer le solde</button>
+      </form>
+    </div>
+
     <div class="card">
       <div class="section-title" style="margin-top:0">
         <h2>Recettes récurrentes</h2>
@@ -624,10 +736,18 @@ function importBackupFile(file){
 
 function render(view=currentView, options={}){
   currentView=view;
-  document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
+  const navView = view==="monthDetail" ? "months" : view;
+  document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("active",b.dataset.view===navView));
+  const eyebrow=document.querySelector(".topbar .eyebrow");
+  if(eyebrow){ const n=new Date(); eyebrow.textContent=`${MONTH_FULL[n.getMonth()]} ${n.getFullYear()}`; }
   const app=document.getElementById("app");
   if(view==="home") app.innerHTML=homeView();
   if(view==="expenses") app.innerHTML=expensesView();
+  if(view==="months") app.innerHTML=monthsView();
+  if(view==="monthDetail"){
+    if(options.month) lastMonthKey=options.month;
+    app.innerHTML=monthDetailView(lastMonthKey || monthKey(new Date().getFullYear(),new Date().getMonth()));
+  }
   if(view==="statement") app.innerHTML=statementView();
   if(view==="search") app.innerHTML=searchView();
   if(view==="settings") app.innerHTML=settingsView();
@@ -644,6 +764,22 @@ function bind(){
   if(add) add.onclick=()=>{ transactionReturnView="home"; render("add",{type:"depense"}); };
   const stAdd=document.getElementById("statementAddBtn");
   if(stAdd) stAdd.onclick=()=>{ transactionReturnView="statement"; render("add",{type:"prelevement",unknown:true}); };
+
+  document.querySelectorAll("[data-open-month]").forEach(row=>{
+    const open=()=>render("monthDetail",{month:row.dataset.openMonth});
+    row.onclick=open;
+    row.onkeydown=e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); open(); } };
+  });
+  const openingForm=document.getElementById("openingForm");
+  if(openingForm) openingForm.onsubmit=e=>{
+    e.preventDefault();
+    const month=document.getElementById("openingMonth").value;
+    const amount=Number(document.getElementById("openingAmount").value);
+    if(!/^\d{4}-\d{2}$/.test(month) || isNaN(amount)) return;
+    state.openingBalance={month,amount};
+    save("avant-solde-depart");
+    render("months");
+  };
 
   document.querySelectorAll("[data-edit-tx]").forEach(row=>{
     const openEdit=()=>{
