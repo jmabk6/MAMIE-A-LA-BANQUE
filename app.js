@@ -841,9 +841,27 @@ function recurringCard(r){
     </div>`;
 }
 
+function recurringAccountCard(acc){
+  const mine=state.recurring.filter(r=>accountOf(r)===acc);
+  const recettes=mine.filter(r=>r.type==="recette");
+  const prelevements=mine.filter(r=>r.type==="prelevement");
+  return `
+    <div class="card recurring-account-card">
+      <h2 class="recurring-account-title">${ACCOUNTS[acc]}</h2>
+      <div class="section-title">
+        <h3>Recettes récurrentes</h3>
+        <button class="link-btn" data-add-recurring="recette" data-recurring-account="${acc}">+ Ajouter</button>
+      </div>
+      ${recettes.length?recettes.map(recurringCard).join(""):'<div class="empty">Aucune recette récurrente</div>'}
+      <div class="section-title">
+        <h3>Prélèvements récurrents</h3>
+        <button class="link-btn" data-add-recurring="prelevement" data-recurring-account="${acc}">+ Ajouter</button>
+      </div>
+      ${prelevements.length?prelevements.map(recurringCard).join(""):'<div class="empty">Aucun prélèvement récurrent</div>'}
+    </div>`;
+}
+
 function settingsView(){
-  const recettes=accountRecurring().filter(r=>r.type==="recette");
-  const prelevements=accountRecurring().filter(r=>r.type==="prelevement");
   const o=openingBalance();
   return `
     <div class="card form-card">
@@ -856,23 +874,9 @@ function settingsView(){
       </form>
     </div>
 
-    <div class="card">
-      <div class="section-title" style="margin-top:0">
-        <h2>Recettes récurrentes</h2>
-        <button class="link-btn" data-add-recurring="recette">+ Ajouter</button>
-      </div>
-      ${recettes.length?recettes.map(recurringCard).join(""):'<div class="empty">Aucune recette récurrente</div>'}
-    </div>
+    ${Object.keys(ACCOUNTS).map(recurringAccountCard).join("")}
 
-    <div class="card">
-      <div class="section-title" style="margin-top:0">
-        <h2>Prélèvements récurrents</h2>
-        <button class="link-btn" data-add-recurring="prelevement">+ Ajouter</button>
-      </div>
-      ${prelevements.length?prelevements.map(recurringCard).join(""):'<div class="empty">Aucun prélèvement récurrent</div>'}
-    </div>
-
-    <button class="fab" id="generateMonthBtn">Ajouter les récurrents au mois</button>
+    <button class="fab" id="generateMonthBtn">Ajouter les récurrents du mois · ${ACCOUNTS[currentAccount]}</button>
     <div class="meta" style="padding:0 8px 16px">Les doublons déjà générés pour le mois sont ignorés.</div>
     <div class="card" style="margin-top:16px">
       <div class="section-title" style="margin-top:0"><h2>Sauvegarde et récupération</h2></div>
@@ -884,8 +888,9 @@ function settingsView(){
   `;
 }
 
-function recurringFormView(type, id=null){
+function recurringFormView(type, id=null, account=null){
   const r=id ? state.recurring.find(x=>String(x.id)===String(id)) : null;
+  const acc=r ? accountOf(r) : (ACCOUNTS[account] ? account : currentAccount);
   const isRecette=type==="recette";
   const freq=(r&&r.frequency)||"monthly";
   const selected=(r&&r.months)||[];
@@ -898,6 +903,11 @@ function recurringFormView(type, id=null){
       <form id="recurringForm">
         <input type="hidden" id="recurringId" value="${r?r.id:""}">
         <input type="hidden" id="recurringType" value="${type}">
+        <label>Compte ${isRecette?"crédité":"prélevé"}
+          <select id="recurringAccount">
+            ${Object.keys(ACCOUNTS).map(a=>`<option value="${a}" ${a===acc?"selected":""}>${ACCOUNTS[a]}</option>`).join("")}
+          </select>
+        </label>
         <label>Libellé<input id="recurringLabel" type="text" required value="${r?escapeHtml(r.label):""}" placeholder="${isRecette?"Pension retraite":"Assurance"}" style="text-transform:uppercase"></label>
 
         <div id="monthlyVariableBox" class="monthly-variable-box">
@@ -1048,7 +1058,7 @@ function render(view=currentView, options={}){
   if(view==="settings") app.innerHTML=settingsView();
   if(view==="add") app.innerHTML=addView(options.type||"depense",!!options.unknown,null);
   if(view==="editTransaction") app.innerHTML=addView("depense",false,options.id);
-  if(view==="recurringForm") app.innerHTML=recurringFormView(options.type,options.id||null);
+  if(view==="recurringForm") app.innerHTML=recurringFormView(options.type,options.id||null,options.account||null);
   bind();
 }
 
@@ -1137,7 +1147,7 @@ function bind(){
 
   bindRecoveryPanel();
 
-  document.querySelectorAll("[data-add-recurring]").forEach(b=>b.onclick=()=>render("recurringForm",{type:b.dataset.addRecurring}));
+  document.querySelectorAll("[data-add-recurring]").forEach(b=>b.onclick=()=>render("recurringForm",{type:b.dataset.addRecurring,account:b.dataset.recurringAccount}));
   document.querySelectorAll("[data-edit-recurring]").forEach(b=>b.onclick=()=>{
     const id=String(b.dataset.editRecurring); const r=state.recurring.find(x=>String(x.id)===id);
     if(r) render("recurringForm",{type:r.type,id});
@@ -1250,7 +1260,8 @@ function bind(){
         monthlyVariable:type==="prelevement" && frequency==="monthly" && monthlyVariableEl.checked,
         months:variable?schedule.map(x=>x.month):[...document.querySelectorAll("#monthsBox input:checked")].map(x=>Number(x.value)),
         schedule,
-        account:idVal ? accountOf(state.recurring.find(x=>String(x.id)===String(idVal))) : currentAccount
+        // Changer le compte ne déplace pas les opérations déjà créées : elles sont passées sur l'ancien compte.
+        account:ACCOUNTS[document.getElementById("recurringAccount").value] ? document.getElementById("recurringAccount").value : currentAccount
       };
       if(idVal){
         const i=state.recurring.findIndex(x=>String(x.id)===String(obj.id)); if(i>=0) state.recurring[i]=obj;
