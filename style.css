@@ -453,3 +453,12 @@ textarea {
 .recurring-account-title{font-size:19px;margin:0 0 4px;color:var(--brand)}
 .recurring-account-card .section-title{margin:14px 0 6px}
 .recurring-account-card .section-title h3{font-size:15px;margin:0}
+
+/* Catégories et filtres du détail du mois */
+.detail-filters{padding:12px}
+.detail-filters .pay-filter{grid-template-columns:repeat(3,1fr);margin-bottom:10px}
+.detail-filters select{width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:16px}
+.filter-total{margin-top:10px;font-size:14px}
+.category-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.category-item:last-of-type{border-bottom:0}
+#categoryField[hidden]{display:none}

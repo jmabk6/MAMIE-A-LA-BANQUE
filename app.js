@@ -349,6 +349,20 @@ function openingBalance(acc=currentAccount){
   const o=(state.openingBalances||{})[acc];
   return o && /^\d{4}-\d{2}$/.test(o.month) ? {month:o.month, amount:Number(o.amount)||0} : null;
 }
+// ---------- Catégories ----------
+// Liste modifiable dans Réglages ; tant qu'elle n'a pas été modifiée, c'est la liste par défaut.
+// Un virement entre comptes n'a pas de catégorie : ce n'est pas une dépense.
+const DEFAULT_CATEGORIES=["Alimentation","Essence","Petit matériel","Assurance","Téléphone","Santé / pharmacie","Énergie","Logement","Loisirs","Cadeaux","Divers"];
+const NO_CATEGORY="Sans catégorie";
+function categories(){ return Array.isArray(state.categories) ? state.categories : DEFAULT_CATEGORIES.slice(); }
+function categorySelectHtml(id, selected){
+  const list=categories();
+  const extra=selected && !list.includes(selected) ? [selected] : [];
+  return `<select id="${id}" required>
+    <option value="" ${selected?"":"selected"} disabled>Choisir une catégorie…</option>
+    ${[...list,...extra].map(c=>`<option ${c===selected?"selected":""}>${escapeHtml(c)}</option>`).join("")}
+  </select>`;
+}
 function localMonthKey(d=new Date()){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; }
 
 // Neutralisation du bouton ↻ historique présent dans index.html.
@@ -437,7 +451,7 @@ function renderTxList(list, showAccount=false){
     <div class="tx tx-editable" data-edit-tx="${tx.id}" role="button" tabindex="0" aria-label="Modifier ${escapeHtml(tx.label)}">
       <div class="tx-main">
         <strong>${escapeHtml(tx.label)} ${statusBadge(tx)}</strong>
-        <div class="meta">${showAccount?`<span class="acc-tag">${accountOf(tx)==="mamie"?"MAMIE":"COMMUN"}</span> `:""}${fmtDate(tx.date)} · ${escapeHtml(tx.payment)}${tx.period && tx.period!==String(tx.date).slice(0,7) ? ` · échéance ${MONTH_FULL[Number(tx.period.slice(5))-1].toLowerCase()}` : ""}</div>
+        <div class="meta">${showAccount?`<span class="acc-tag">${accountOf(tx)==="mamie"?"MAMIE":"COMMUN"}</span> `:""}${fmtDate(tx.date)} · ${escapeHtml(tx.payment)}${tx.transferId ? "" : ` · ${escapeHtml(tx.category||NO_CATEGORY)}`}${tx.period && tx.period!==String(tx.date).slice(0,7) ? ` · échéance ${MONTH_FULL[Number(tx.period.slice(5))-1].toLowerCase()}` : ""}</div>
       </div>
       <div class="amount ${typeClass(tx)}">${tx.type==="recette"?"+":"-"}${euro(tx.amount)}</div>
     </div>`).join("")}</div>`;
@@ -619,6 +633,8 @@ function addView(defaultType="depense", unknown=false, editId=null){
         </select>
       </label>
 
+      ${tx.transferId ? "" : `<label id="categoryField">Catégorie ${categorySelectHtml("category", tx.category||"")}</label>`}
+
       <label class="check-row">
         <input id="unknown" type="checkbox" ${tx.unknown ? "checked" : ""} />
         Ajouté depuis le relevé / inconnu
@@ -714,6 +730,30 @@ function monthSummary(key, scope){
     especes:add("especes"), virements:0
   };
 }
+let detailPayFilter="";   // "" | "Carte bancaire" | "Espèces"
+let detailCatFilter="";   // "" | nom de catégorie | NO_CATEGORY
+function filterTx(list){
+  return list.filter(t=>
+    (!detailPayFilter || t.payment===detailPayFilter) &&
+    (!detailCatFilter || (t.transferId ? false : (t.category||NO_CATEGORY)===detailCatFilter)));
+}
+function detailFiltersHtml(tx){
+  const cats=[...new Set([...categories(), ...tx.filter(t=>!t.transferId).map(t=>t.category||NO_CATEGORY)])];
+  const pays=[["","Tous"],["Carte bancaire","CB"],["Espèces","Espèces"]];
+  const shown=filterTx(tx);
+  const total=shown.reduce((s,t)=>s+(t.type==="recette"?1:-1)*(Number(t.amount)||0),0);
+  const active=detailPayFilter||detailCatFilter;
+  return `<div class="card detail-filters">
+    <div class="segmented pay-filter">
+      ${pays.map(([v,l])=>`<button type="button" data-pay-filter="${escapeHtml(v)}" class="${v===detailPayFilter?"active":""}">${l}</button>`).join("")}
+    </div>
+    <select id="catFilter">
+      <option value="">Toutes les catégories</option>
+      ${cats.map(c=>`<option ${c===detailCatFilter?"selected":""}>${escapeHtml(c)}</option>`).join("")}
+    </select>
+    ${active ? `<div class="filter-total">${shown.length} opération(s) · total <strong class="${total<0?"red":"green"}">${total<0?"-":"+"}${euro(Math.abs(total))}</strong></div>` : ""}
+  </div>`;
+}
 function balanceText(v){ return v===null ? "—" : euro(v); }
 function scopeLabel(scope){ return scope==="global" ? "Global" : ACCOUNTS[scope]; }
 
@@ -770,7 +810,8 @@ function monthDetailView(key){
     ${s.virements?`<div class="notice" style="margin-top:12px">Virements entre comptes : <strong>${s.virements>0?"+":"-"}${euro(Math.abs(s.virements))}</strong> (ni recette ni dépense, compris dans le solde)</div>`:""}
     ${s.especes?`<div class="notice" style="margin-top:12px">Espèces dépensées : <strong>${euro(s.especes)}</strong> (hors compte, non comptées dans le solde)</div>`:""}
     <section class="section-title"><h2>Opérations</h2></section>
-    ${renderTxList(s.tx, global)}
+    ${detailFiltersHtml(s.tx)}
+    ${renderTxList(filterTx(s.tx), global)}
   `;
 }
 
@@ -878,6 +919,17 @@ function settingsView(){
 
     <div class="meta" style="padding:0 8px 16px">Les récurrents sont ajoutés automatiquement dans chaque mois, sur leur compte. Une échéance supprimée n’est pas recréée.</div>
     <div class="card" style="margin-top:16px">
+      <div class="section-title" style="margin-top:0"><h2>Catégories</h2></div>
+      ${categories().map((c,i)=>`<div class="category-item">
+        <span>${escapeHtml(c)}</span>
+        <span class="recurring-actions">
+          <button class="mini-btn" data-rename-category="${i}">Renommer</button>
+          <button class="mini-btn danger" data-delete-category="${i}">Suppr.</button>
+        </span>
+      </div>`).join("")}
+      <button class="secondary-btn" id="addCategoryBtn" style="margin-top:10px">+ Ajouter une catégorie</button>
+    </div>
+    <div class="card" style="margin-top:16px">
       <div class="section-title" style="margin-top:0"><h2>Sauvegarde et récupération</h2></div>
       <div class="meta" style="margin-bottom:10px">Recherche toutes les anciennes clés localStorage commençant par « mamie-banque ». Aucune clé n’est supprimée.</div>
       <button class="secondary-btn" id="scanStorageBtn">Rechercher mes anciennes données</button>
@@ -907,6 +959,7 @@ function recurringFormView(type, id=null, account=null){
             ${Object.keys(ACCOUNTS).map(a=>`<option value="${a}" ${a===acc?"selected":""}>${ACCOUNTS[a]}</option>`).join("")}
           </select>
         </label>
+        <label>Catégorie ${categorySelectHtml("recurringCategory", r&&r.category||"")}</label>
         <label>À partir de<input id="recurringStart" type="month" required value="${r ? recurringFirstMonth(r) : localMonthKey()}"></label>
         <label>Libellé<input id="recurringLabel" type="text" required value="${r?escapeHtml(r.label):""}" placeholder="${isRecette?"Pension retraite":"Assurance"}" style="text-transform:uppercase"></label>
 
@@ -1074,6 +1127,39 @@ function bind(){
     }
     render(currentView);
   });
+  const addCategoryBtn=document.getElementById("addCategoryBtn");
+  if(addCategoryBtn) addCategoryBtn.onclick=()=>{
+    const name=(prompt("Nom de la nouvelle catégorie :")||"").trim();
+    if(!name) return;
+    if(categories().some(c=>c.toLowerCase()===name.toLowerCase())){ alert("Cette catégorie existe déjà."); return; }
+    state.categories=[...categories(), name];
+    save("avant-ajout-categorie"); render("settings");
+  };
+  document.querySelectorAll("[data-rename-category]").forEach(b=>b.onclick=()=>{
+    const list=categories(); const old=list[Number(b.dataset.renameCategory)];
+    const name=(prompt(`Nouveau nom pour « ${old} » :`, old)||"").trim();
+    if(!name || name===old) return;
+    if(list.some(c=>c!==old && c.toLowerCase()===name.toLowerCase())){ alert("Cette catégorie existe déjà."); return; }
+    // Le nouveau nom s'applique partout : opérations et récurrents.
+    state.categories=list.map(c=>c===old?name:c);
+    state.transactions.forEach(t=>{ if(t.category===old) t.category=name; });
+    state.recurring.forEach(r=>{ if(r.category===old) r.category=name; });
+    if(detailCatFilter===old) detailCatFilter=name;
+    save("avant-renommage-categorie"); render("settings");
+  });
+  document.querySelectorAll("[data-delete-category]").forEach(b=>b.onclick=()=>{
+    const list=categories(); const old=list[Number(b.dataset.deleteCategory)];
+    const used=state.transactions.filter(t=>t.category===old).length;
+    if(!confirm(`Supprimer la catégorie « ${old} » ?${used?`\n\n${used} opération(s) passeront en « ${NO_CATEGORY} ».`:""}`)) return;
+    state.categories=list.filter(c=>c!==old);
+    state.transactions.forEach(t=>{ if(t.category===old) delete t.category; });
+    state.recurring.forEach(r=>{ if(r.category===old) delete r.category; });
+    if(detailCatFilter===old) detailCatFilter="";
+    save("avant-suppression-categorie"); render("settings");
+  });
+  document.querySelectorAll("[data-pay-filter]").forEach(b=>b.onclick=()=>{ detailPayFilter=b.dataset.payFilter; render("monthDetail"); });
+  const catFilter=document.getElementById("catFilter");
+  if(catFilter) catFilter.onchange=()=>{ detailCatFilter=catFilter.value; render("monthDetail"); };
   document.querySelectorAll("[data-open-month]").forEach(row=>{
     const open=()=>render("monthDetail",{month:row.dataset.openMonth});
     row.onclick=open;
@@ -1256,6 +1342,7 @@ function bind(){
         id:idVal?Number(idVal):Date.now(),
         type,
         label:normalizeLabel(document.getElementById("recurringLabel").value),
+        category:document.getElementById("recurringCategory").value,
         amount:variable?0:Number(document.getElementById("recurringAmount").value),
         day:variable?1:Number(document.getElementById("recurringDay").value),
         payment:type==="recette"?"Virement":"Prélèvement",
@@ -1270,6 +1357,8 @@ function bind(){
       if(idVal){
         const i=state.recurring.findIndex(x=>String(x.id)===String(obj.id)); if(i>=0) state.recurring[i]=obj;
       } else state.recurring.push(obj);
+      // Ses opérations encore sans catégorie prennent celle du récurrent.
+      state.transactions.forEach(t=>{ if(String(t.recurringId)===String(obj.id) && !t.category && obj.category) t.category=obj.category; });
       save("avant-modification-recurrent");
       autoGenerateRecurring();
       render("settings");
@@ -1286,6 +1375,11 @@ function bind(){
       if(b.dataset.type==="recette") form.querySelector("#payment").value="Virement";
       const label=form.querySelector("#label");
       const transferLabel=normalizeLabel(`Virement vers ${ACCOUNTS[otherAccount()]}`);
+      const categoryField=form.querySelector("#categoryField");
+      if(categoryField){
+        categoryField.hidden=b.dataset.type==="transfert";
+        form.querySelector("#category").required=b.dataset.type!=="transfert";
+      }
       if(b.dataset.type==="transfert"){
         form.querySelector("#payment").value="Virement";
         if(!label.value.trim()) label.value=transferLabel;
@@ -1306,7 +1400,8 @@ function bind(){
             label:normalizeLabel(form.querySelector("#label").value),
             amount:Number(form.querySelector("#amount").value),
             payment:form.querySelector("#payment").value,
-            unknown:form.querySelector("#unknown").checked
+            unknown:form.querySelector("#unknown").checked,
+            ...(form.querySelector("#category") ? {category:form.querySelector("#category").value} : {})
           };
           // Un virement entre comptes existe des deux côtés : date et montant restent identiques.
           if(previous.transferId){
@@ -1345,6 +1440,7 @@ function bind(){
         label:normalizeLabel(form.querySelector("#label").value),
         amount:Number(form.querySelector("#amount").value),
         payment:form.querySelector("#payment").value,
+        category:form.querySelector("#category").value,
         unknown:form.querySelector("#unknown").checked,
         pointed:false
       };
@@ -1399,7 +1495,8 @@ function autoGenerateRecurring(){
           id:Date.now()*100+(seq++),
           date:`${key}-${String(day).padStart(2,"0")}`,
           label:normalizeLabel(r.label),type:r.type,amount:Number(occurrence.amount)||0,payment:r.payment,
-          pointed:false,unknown:false,recurringId:r.id,period:key,account:accountOf(r)
+          pointed:false,unknown:false,recurringId:r.id,period:key,account:accountOf(r),
+          ...(r.category ? {category:r.category} : {})
         });
         added++;
       }
