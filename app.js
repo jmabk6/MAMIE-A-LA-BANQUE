@@ -119,6 +119,7 @@ async function bootRemote(){
     return;
   }
 
+  autoGenerateRecurring();
   render("home");
 }
 
@@ -433,11 +434,10 @@ function monthApplies(r, monthIndex){
 function renderTxList(list, showAccount=false){
   if(!list.length) return '<div class="empty">Aucune opération</div>';
   return `<div class="card">${sortedTx(list).map(tx=>`
-    <div class="tx ${tx.type==="depense"?"tx-editable":""}"
-         ${tx.type==="depense" ? `data-edit-tx="${tx.id}" role="button" tabindex="0" aria-label="Modifier ${escapeHtml(tx.label)}"` : ""}>
+    <div class="tx tx-editable" data-edit-tx="${tx.id}" role="button" tabindex="0" aria-label="Modifier ${escapeHtml(tx.label)}">
       <div class="tx-main">
         <strong>${escapeHtml(tx.label)} ${statusBadge(tx)}</strong>
-        <div class="meta">${showAccount?`<span class="acc-tag">${accountOf(tx)==="mamie"?"MAMIE":"COMMUN"}</span> `:""}${fmtDate(tx.date)} · ${escapeHtml(tx.payment)}</div>
+        <div class="meta">${showAccount?`<span class="acc-tag">${accountOf(tx)==="mamie"?"MAMIE":"COMMUN"}</span> `:""}${fmtDate(tx.date)} · ${escapeHtml(tx.payment)}${tx.period && tx.period!==String(tx.date).slice(0,7) ? ` · échéance ${MONTH_FULL[Number(tx.period.slice(5))-1].toLowerCase()}` : ""}</div>
       </div>
       <div class="amount ${typeClass(tx)}">${tx.type==="recette"?"+":"-"}${euro(tx.amount)}</div>
     </div>`).join("")}</div>`;
@@ -876,8 +876,7 @@ function settingsView(){
 
     ${Object.keys(ACCOUNTS).map(recurringAccountCard).join("")}
 
-    <button class="fab" id="generateMonthBtn">Ajouter les récurrents du mois · ${ACCOUNTS[currentAccount]}</button>
-    <div class="meta" style="padding:0 8px 16px">Les doublons déjà générés pour le mois sont ignorés.</div>
+    <div class="meta" style="padding:0 8px 16px">Les récurrents sont ajoutés automatiquement dans chaque mois, sur leur compte. Une échéance supprimée n’est pas recréée.</div>
     <div class="card" style="margin-top:16px">
       <div class="section-title" style="margin-top:0"><h2>Sauvegarde et récupération</h2></div>
       <div class="meta" style="margin-bottom:10px">Recherche toutes les anciennes clés localStorage commençant par « mamie-banque ». Aucune clé n’est supprimée.</div>
@@ -908,6 +907,7 @@ function recurringFormView(type, id=null, account=null){
             ${Object.keys(ACCOUNTS).map(a=>`<option value="${a}" ${a===acc?"selected":""}>${ACCOUNTS[a]}</option>`).join("")}
           </select>
         </label>
+        <label>À partir de<input id="recurringStart" type="month" required value="${r ? recurringFirstMonth(r) : localMonthKey()}"></label>
         <label>Libellé<input id="recurringLabel" type="text" required value="${r?escapeHtml(r.label):""}" placeholder="${isRecette?"Pension retraite":"Assurance"}" style="text-transform:uppercase"></label>
 
         <div id="monthlyVariableBox" class="monthly-variable-box">
@@ -1087,6 +1087,7 @@ function bind(){
     if(!/^\d{4}-\d{2}$/.test(month) || !Number.isFinite(amount)) return;
     state.openingBalances={...(state.openingBalances||{}), [currentAccount]:{month,amount}};
     save("avant-solde-depart");
+    autoGenerateRecurring();
     alert(`Solde de départ enregistré pour le ${ACCOUNTS[currentAccount]}.`);
     render("settings");
   };
@@ -1123,6 +1124,9 @@ function bind(){
     const both=tx.transferId ? "\n\nC’est un virement entre comptes : il sera supprimé des deux comptes." : "";
     if(confirm(`Supprimer définitivement « ${tx.label} » de ${euro(Number(tx.amount)||0)} ?${both}`)){
       state.transactions=state.transactions.filter(x=>String(x.id)!==editId && !(tx.transferId && x.transferId===tx.transferId));
+      if(tx.recurringId){
+        state.skippedOccurrences=[...(state.skippedOccurrences||[]), {recurringId:tx.recurringId, period:occurrencePeriod(tx)}];
+      }
       save("avant-suppression-operation");
       render(transactionReturnView || "home");
     }
@@ -1134,7 +1138,6 @@ function bind(){
     bindRecoveryPanel();
   };
   const exp=document.getElementById("exportBackupBtn"); if(exp) exp.onclick=exportCurrentBackup;
-  const gen=document.getElementById("generateMonthBtn"); if(gen) gen.onclick=generateRecurringForMonth;
   const exportBtn=document.getElementById("exportBackupBtn");
   if(exportBtn) exportBtn.onclick=exportBackup;
   const importBtn=document.getElementById("importBackupBtn");
@@ -1260,13 +1263,16 @@ function bind(){
         monthlyVariable:type==="prelevement" && frequency==="monthly" && monthlyVariableEl.checked,
         months:variable?schedule.map(x=>x.month):[...document.querySelectorAll("#monthsBox input:checked")].map(x=>Number(x.value)),
         schedule,
+        startMonth:/^\d{4}-\d{2}$/.test(document.getElementById("recurringStart").value) ? document.getElementById("recurringStart").value : localMonthKey(),
         // Changer le compte ne déplace pas les opérations déjà créées : elles sont passées sur l'ancien compte.
         account:ACCOUNTS[document.getElementById("recurringAccount").value] ? document.getElementById("recurringAccount").value : currentAccount
       };
       if(idVal){
         const i=state.recurring.findIndex(x=>String(x.id)===String(obj.id)); if(i>=0) state.recurring[i]=obj;
       } else state.recurring.push(obj);
-      save("avant-modification-recurrent"); render("settings");
+      save("avant-modification-recurrent");
+      autoGenerateRecurring();
+      render("settings");
     };
   }
 
@@ -1365,30 +1371,43 @@ function bindRecoveryPanel(){
   });
 }
 
-function generateRecurringForMonth(){
-  const now=new Date();
-  // Prototype anchored to current device month.
-  const y=now.getFullYear(), m=now.getMonth();
-  let added=0;
-  accountRecurring().forEach(r=>{
-    const occurrence=expectedRecurringForMonth(r,m);
-    if(!occurrence) return;
-    const maxDay=new Date(y,m+1,0).getDate();
-    const day=Math.min(Number(occurrence.day)||1,maxDay);
-    const d=`${y}-${String(m+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
-    const exists=state.transactions.some(t=>String(t.recurringId)===String(r.id) && t.date.slice(0,7)===d.slice(0,7));
-    if(!exists){
-      state.transactions.push({
-        id:Date.now()+Math.floor(Math.random()*100000),
-        date:d,label:normalizeLabel(r.label),type:r.type,amount:Number(occurrence.amount)||0,payment:r.payment,
-        pointed:false,unknown:false,recurringId:r.id,account:currentAccount
-      });
-      added++;
+// ---------- Récurrents : création automatique ----------
+// À chaque ouverture, chaque récurrent reçoit son opération dans chaque mois où il tombe,
+// depuis son premier mois jusqu'au mois en cours, sur son propre compte.
+// Une opération créée ainsi garde son mois d'échéance (period) : on peut la déplacer
+// ou la supprimer sans qu'elle soit recréée.
+function occurrencePeriod(t){ return t.period || String(t.date||"").slice(0,7); }
+function recurringFirstMonth(r){
+  if(/^\d{4}-\d{2}$/.test(r.startMonth||"")) return r.startMonth;
+  const o=openingBalance(accountOf(r));
+  return o ? o.month : localMonthKey();
+}
+function isSkippedOccurrence(r, period){
+  return (state.skippedOccurrences||[]).some(x=>String(x.recurringId)===String(r.id) && x.period===period);
+}
+function autoGenerateRecurring(){
+  const current=localMonthKey();
+  let added=0, seq=0;
+  state.recurring.filter(r=>!isLegacyDemoRecurring(r)).forEach(r=>{
+    let [y,m]=recurringFirstMonth(r).split("-").map(Number);
+    for(let key=`${y}-${String(m).padStart(2,"0")}`; key<=current; key=`${y}-${String(m).padStart(2,"0")}`){
+      const occurrence=expectedRecurringForMonth(r,m-1);
+      const exists=state.transactions.some(t=>String(t.recurringId)===String(r.id) && occurrencePeriod(t)===key);
+      if(occurrence && !exists && !isSkippedOccurrence(r,key)){
+        const day=Math.min(Number(occurrence.day)||1,new Date(y,m,0).getDate());
+        state.transactions.push({
+          id:Date.now()*100+(seq++),
+          date:`${key}-${String(day).padStart(2,"0")}`,
+          label:normalizeLabel(r.label),type:r.type,amount:Number(occurrence.amount)||0,payment:r.payment,
+          pointed:false,unknown:false,recurringId:r.id,period:key,account:accountOf(r)
+        });
+        added++;
+      }
+      m++; if(m===13){ m=1; y++; }
     }
   });
-  save();
-  alert(added ? `${added} opération(s) récurrente(s) ajoutée(s) au mois.` : "Tous les récurrents de ce mois sont déjà présents.");
-  render("home");
+  if(added) save("avant-creation-recurrents");
+  return added;
 }
 
 function frDateToIso(value){
