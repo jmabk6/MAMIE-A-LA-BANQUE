@@ -58,7 +58,12 @@ async function loadRemote(){
       if(!isValidState(j.data)) throw new Error("INVALID_STATE");
 
       state=cloneState(j.data);
-      localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); // cache de secours uniquement
+      // Si le téléphone contient des saisies absentes du serveur (ex. version hors ligne
+      // du 30/09), on les garde dans une copie de sécurité avant de les remplacer.
+      const localRaw=localStorage.getItem(STORAGE_KEY);
+      const remoteRaw=JSON.stringify(state);
+      if(localRaw!==null && localRaw!==remoteRaw) backupCurrentStorage("avant-chargement-serveur");
+      localStorage.setItem(STORAGE_KEY,remoteRaw); // cache de secours uniquement
       remoteReady=true;
       return true;
     }catch(e){
