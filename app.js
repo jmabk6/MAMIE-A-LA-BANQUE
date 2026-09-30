@@ -640,10 +640,11 @@ function addView(defaultType="depense", unknown=false, editId=null){
         Ajouté depuis le relevé / inconnu
       </label>
 
-      <button class="primary" type="submit">
+      ${existing && txLocked(existing) ? `<div class="notice orange">${escapeHtml(lockedMessage(existing))}</div>` : ""}
+      <button class="primary" type="submit" ${existing && txLocked(existing) ? "disabled" : ""}>
         ${existing ? "Enregistrer les modifications" : "Enregistrer"}
       </button>
-      ${existing ? `<button class="secondary-btn danger transaction-delete-btn" type="button"
+      ${existing && !txLocked(existing) ? `<button class="secondary-btn danger transaction-delete-btn" type="button"
               data-transaction-delete="1" style="margin-top:10px">
         Supprimer cette opération
       </button>` : ""}
@@ -687,8 +688,31 @@ function monthRange(scope){
   }
   return out;
 }
+// Un solde de fin n'est une donnée sûre qu'une fois validé par l'utilisateur, relevé en main
+// (écart nul). Le mois est alors verrouillé : plus d'ajout, de modification ni de suppression
+// d'opération de ce mois sur ce compte, jusqu'au déverrouillage.
+function monthValidation(acc, key){
+  const v=((state.monthStatus||{})[acc]||{})[key];
+  return v && v.validated ? v : null;
+}
+function isMonthLocked(acc, key){ return !!monthValidation(acc, key); }
+function txLocked(t, date=t.date){ return isMonthLocked(accountOf(t), String(date||"").slice(0,7)); }
+function lockedMessage(t, date=t.date){
+  return `${monthTitle(String(date).slice(0,7))} est validé et verrouillé sur le ${ACCOUNTS[accountOf(t)]}.\nDéverrouille-le d’abord dans l’écran Mois pour modifier ses opérations.`;
+}
+function lastValidatedBefore(acc, key){
+  const months=Object.keys((state.monthStatus||{})[acc]||{}).filter(k=>k<key && isMonthLocked(acc,k)).sort();
+  return months.length ? months[months.length-1] : null;
+}
 function monthStartBalance(key, acc){
-  // Solde au 1er du mois = solde de départ ± opérations entre le mois de départ et ce mois.
+  // Solde au 1er du mois = dernier solde de fin validé avant ce mois ± opérations depuis.
+  const v=lastValidatedBefore(acc, key);
+  if(v){
+    return monthValidation(acc,v).endBalance + datedAccountTx(acc)
+      .filter(t=>{ const k=t.date.slice(0,7); return k>v && k<key; })
+      .reduce((s,t)=>s+bankEffect(t),0);
+  }
+  // Sinon : solde de départ ± opérations entre le mois de départ et ce mois.
   const o=openingBalance(acc);
   if(!o) return null;
   let bal=o.amount;
@@ -705,9 +729,11 @@ function accountMonthSummary(key, acc){
   // Un virement entre comptes n'est ni une recette ni une dépense : il est compté à part.
   const bank=t=>t.payment!=="Espèces" && !t.transferId;
   const sum=f=>tx.filter(f).reduce((s,t)=>s+(Number(t.amount)||0),0);
+  const validation=monthValidation(acc,key);
   return {
-    acc, tx, start,
-    end: start===null ? null : start+tx.reduce((s,t)=>s+bankEffect(t),0),
+    acc, tx, start, validation,
+    computedEnd: start===null ? null : start+tx.reduce((s,t)=>s+bankEffect(t),0),
+    end: validation ? validation.endBalance : (start===null ? null : start+tx.reduce((s,t)=>s+bankEffect(t),0)),
     recettes:sum(t=>bank(t)&&t.type==="recette"),
     depenses:sum(t=>bank(t)&&t.type==="depense"),
     prelevements:sum(t=>bank(t)&&t.type==="prelevement"),
@@ -723,6 +749,7 @@ function monthSummary(key, scope){
   const missing=parts.some(p=>p.start===null);
   return {
     key, parts,
+    validation: parts.every(p=>p.validation) ? parts[0].validation : null,
     tx:parts.flatMap(p=>p.tx).filter(t=>!t.transferId),
     start: missing ? null : add("start"),
     end: missing ? null : add("end"),
@@ -780,11 +807,30 @@ function monthsView(){
           return `<div class="month-row" data-open-month="${k}" role="button" tabindex="0">
             <div class="month-name"><strong>${MONTH_FULL[Number(k.slice(5))-1]}</strong><div class="meta">${s.tx.length} opération(s)</div></div>
             <div class="month-bal"><small>Début</small><span>${balanceText(s.start)}</span></div>
-            <div class="month-bal"><small>Fin</small><strong class="${s.end!==null&&s.end<0?"red":""}">${balanceText(s.end)}</strong></div>
+            <div class="month-bal"><small>${s.validation?"Fin ✓":"Fin provisoire"}</small><strong class="${s.validation?"":"provisional"} ${s.end!==null&&s.end<0?"red":""}">${balanceText(s.end)}</strong></div>
           </div>`;
         }).join("")}
       </div>`).join("")}
   `;
+}
+
+function validationCardHtml(s){
+  if(s.validation){
+    const when=new Date(s.validation.validatedAt).toLocaleDateString("fr-FR");
+    return `<div class="card validation-card validated">
+      <div><strong>Solde de fin validé ✓</strong> le ${when} : ${euro(s.validation.endBalance)}</div>
+      <div class="meta">Le mois est verrouillé : ses opérations ne peuvent plus être ajoutées, modifiées ni supprimées.</div>
+      <button class="secondary-btn" id="unlockMonthBtn" style="margin-top:10px">Déverrouiller le mois</button>
+    </div>`;
+  }
+  if(s.computedEnd===null) return "";
+  return `<div class="card form-card validation-card">
+    <div class="section-title" style="margin-top:0"><h2>Valider le solde de fin</h2></div>
+    <div>Solde de fin calculé : <strong>${euro(s.computedEnd)}</strong></div>
+    <label>Solde de fin lu sur le relevé<input id="statementEnd" type="number" inputmode="decimal" step="0.01" placeholder="0,00"></label>
+    <div id="validationGap" class="meta">Tape le solde du relevé pour voir l’écart.</div>
+    <button class="primary" id="validateMonthBtn" type="button" disabled style="margin-top:10px">Valider le solde de fin</button>
+  </div>`;
 }
 
 function monthDetailView(key){
@@ -798,7 +844,7 @@ function monthDetailView(key){
       <small>${monthTitle(key)} · ${scopeLabel(scope)}</small>
       <div class="month-hero">
         <div><small>Solde début</small><div class="balance-sm">${balanceText(s.start)}</div></div>
-        <div><small>Solde fin</small><div class="balance-sm">${balanceText(s.end)}</div></div>
+        <div><small>${s.validation?"Solde fin validé ✓":"Solde fin provisoire"}</small><div class="balance-sm">${balanceText(s.end)}</div></div>
       </div>
       ${global ? `<div class="month-parts">${s.parts.map(p=>`<div><small>${ACCOUNTS[p.acc]}</small><span>${balanceText(p.start)} → ${balanceText(p.end)}</span></div>`).join("")}</div>` : ""}
     </section>
@@ -809,6 +855,7 @@ function monthDetailView(key){
     </section>
     ${s.virements?`<div class="notice" style="margin-top:12px">Virements entre comptes : <strong>${s.virements>0?"+":"-"}${euro(Math.abs(s.virements))}</strong> (ni recette ni dépense, compris dans le solde)</div>`:""}
     ${s.especes?`<div class="notice" style="margin-top:12px">Espèces dépensées : <strong>${euro(s.especes)}</strong> (hors compte, non comptées dans le solde)</div>`:""}
+    ${global ? "" : validationCardHtml(s)}
     <section class="section-title"><h2>Opérations</h2></section>
     ${detailFiltersHtml(s.tx)}
     ${renderTxList(filterTx(s.tx), global)}
@@ -1160,6 +1207,41 @@ function bind(){
   document.querySelectorAll("[data-pay-filter]").forEach(b=>b.onclick=()=>{ detailPayFilter=b.dataset.payFilter; render("monthDetail"); });
   const catFilter=document.getElementById("catFilter");
   if(catFilter) catFilter.onchange=()=>{ detailCatFilter=catFilter.value; render("monthDetail"); };
+  const statementEnd=document.getElementById("statementEnd");
+  if(statementEnd){
+    const key=lastMonthKey || localMonthKey();
+    const computed=monthSummary(key,currentAccount).computedEnd;
+    const btn=document.getElementById("validateMonthBtn");
+    const gapEl=document.getElementById("validationGap");
+    const cents=v=>Math.round(v*100);
+    statementEnd.oninput=()=>{
+      const v=parseFloat(statementEnd.value);
+      if(!Number.isFinite(v)){ btn.disabled=true; gapEl.textContent="Tape le solde du relevé pour voir l’écart."; gapEl.className="meta"; return; }
+      const gap=cents(v)-cents(computed);
+      btn.disabled=gap!==0;
+      gapEl.className=gap===0?"gap-ok":"gap-ko";
+      gapEl.textContent=gap===0 ? "Écart : 0,00 € ✓ — tu peux valider."
+        : `Écart : ${gap>0?"+":"-"}${euro(Math.abs(gap)/100)} — ajoute ce qui manque ou supprime ce qui est en trop avant de valider.`;
+    };
+    btn.onclick=()=>{
+      const v=parseFloat(statementEnd.value);
+      if(!Number.isFinite(v) || cents(v)!==cents(computed)) return;
+      state.monthStatus={...(state.monthStatus||{})};
+      state.monthStatus[currentAccount]={...(state.monthStatus[currentAccount]||{}), [key]:{validated:true, endBalance:cents(v)/100, validatedAt:new Date().toISOString()}};
+      save("avant-validation-mois");
+      render("monthDetail");
+    };
+  }
+  const unlockBtn=document.getElementById("unlockMonthBtn");
+  if(unlockBtn) unlockBtn.onclick=()=>{
+    const key=lastMonthKey || localMonthKey();
+    if(!confirm(`Déverrouiller ${monthTitle(key)} sur le ${ACCOUNTS[currentAccount]} ?\n\nSon solde de fin redeviendra provisoire jusqu’à une nouvelle validation.`)) return;
+    const acc={...((state.monthStatus||{})[currentAccount]||{})};
+    delete acc[key];
+    state.monthStatus={...(state.monthStatus||{}), [currentAccount]:acc};
+    save("avant-deverrouillage-mois");
+    render("monthDetail");
+  };
   document.querySelectorAll("[data-open-month]").forEach(row=>{
     const open=()=>render("monthDetail",{month:row.dataset.openMonth});
     row.onclick=open;
@@ -1207,6 +1289,8 @@ function bind(){
     const editId=form && form.dataset.editId ? String(form.dataset.editId) : "";
     const tx=state.transactions.find(x=>String(x.id)===editId);
     if(!tx) return;
+    const lockedSide=state.transactions.find(x=>(x===tx || (tx.transferId && x.transferId===tx.transferId)) && txLocked(x));
+    if(lockedSide){ alert(lockedMessage(lockedSide)); return; }
     const both=tx.transferId ? "\n\nC’est un virement entre comptes : il sera supprimé des deux comptes." : "";
     if(confirm(`Supprimer définitivement « ${tx.label} » de ${euro(Number(tx.amount)||0)} ?${both}`)){
       state.transactions=state.transactions.filter(x=>String(x.id)!==editId && !(tx.transferId && x.transferId===tx.transferId));
@@ -1358,7 +1442,7 @@ function bind(){
         const i=state.recurring.findIndex(x=>String(x.id)===String(obj.id)); if(i>=0) state.recurring[i]=obj;
       } else state.recurring.push(obj);
       // Ses opérations encore sans catégorie prennent celle du récurrent.
-      state.transactions.forEach(t=>{ if(String(t.recurringId)===String(obj.id) && !t.category && obj.category) t.category=obj.category; });
+      state.transactions.forEach(t=>{ if(String(t.recurringId)===String(obj.id) && !t.category && obj.category && !txLocked(t)) t.category=obj.category; });
       save("avant-modification-recurrent");
       autoGenerateRecurring();
       render("settings");
@@ -1388,8 +1472,13 @@ function bind(){
     form.onsubmit=e=>{
       e.preventDefault();
       const editId=form.dataset.editId ? String(form.dataset.editId) : null;
+      const newDate=form.querySelector("#date").value;
 
       if(editId!==null){
+        const before=state.transactions.find(x=>String(x.id)===String(editId));
+        const partnerBefore=before && before.transferId ? state.transactions.find(x=>x.transferId===before.transferId && String(x.id)!==String(before.id)) : null;
+        const blocked=[before,partnerBefore].filter(Boolean).find(t=>txLocked(t) || txLocked(t,newDate));
+        if(blocked){ alert(lockedMessage(blocked, txLocked(blocked)?blocked.date:newDate)); return; }
         const i=state.transactions.findIndex(x=>String(x.id)===String(editId));
         if(i>=0){
           const previous=state.transactions[i];
@@ -1415,6 +1504,8 @@ function bind(){
       }
 
       if(form.querySelector("#type").value==="transfert"){
+        const blockedAcc=[currentAccount, otherAccount()].find(a=>isMonthLocked(a,newDate.slice(0,7)));
+        if(blockedAcc){ alert(lockedMessage({account:blockedAcc}, newDate)); return; }
         // Une seule saisie, deux opérations : sortie de ce compte, entrée sur l'autre.
         const base=Date.now();
         const to=otherAccount();
@@ -1432,6 +1523,7 @@ function bind(){
         return;
       }
 
+      if(isMonthLocked(currentAccount,newDate.slice(0,7))){ alert(lockedMessage({account:currentAccount}, newDate)); return; }
       const tx={
         id:Date.now(),
         account:currentAccount,
@@ -1489,7 +1581,7 @@ function autoGenerateRecurring(){
     for(let key=`${y}-${String(m).padStart(2,"0")}`; key<=current; key=`${y}-${String(m).padStart(2,"0")}`){
       const occurrence=expectedRecurringForMonth(r,m-1);
       const exists=state.transactions.some(t=>String(t.recurringId)===String(r.id) && occurrencePeriod(t)===key);
-      if(occurrence && !exists && !isSkippedOccurrence(r,key)){
+      if(occurrence && !exists && !isSkippedOccurrence(r,key) && !isMonthLocked(accountOf(r),key)){
         const day=Math.min(Number(occurrence.day)||1,new Date(y,m,0).getDate());
         state.transactions.push({
           id:Date.now()*100+(seq++),

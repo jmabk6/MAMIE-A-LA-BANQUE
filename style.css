@@ -462,3 +462,11 @@ textarea {
 .category-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
 .category-item:last-of-type{border-bottom:0}
 #categoryField[hidden]{display:none}
+
+/* Validation du solde de fin */
+.month-bal strong.provisional{color:var(--muted);font-weight:600;font-style:italic}
+.validation-card{margin-top:12px}
+.validation-card.validated{background:#e9f7ed;color:#226b3a}
+.gap-ok{color:#157741;font-weight:700;margin-top:6px}
+.gap-ko{color:#b65d00;font-weight:700;margin-top:6px}
+.primary:disabled{opacity:.45}
