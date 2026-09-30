@@ -406,3 +406,9 @@ textarea {
   height:20px!important;
   flex:0 0 20px;
 }
+
+/* Comptes */
+.account-switch{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:#eef3f4;padding:4px;border-radius:14px;margin:0 0 14px}
+.account-switch button{border:0;padding:11px 6px;border-radius:11px;background:transparent;font-size:14px;font-weight:800;color:#607177}
+.account-switch button.active{background:var(--brand);color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.1)}
+#typeSegment{grid-template-columns:repeat(2,1fr)}

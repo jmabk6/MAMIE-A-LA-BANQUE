@@ -2,7 +2,8 @@ const STORAGE_KEY = "mamie-banque-v2";
 const STORAGE_PREFIX = "mamie-banque";
 const BACKUP_PREFIX = "mamie-banque-backup-";
 
-const API_BASE = "https://mamie.hoteldereims.com";
+// Remplaçable uniquement par la page de test sur PC ; en production, le serveur OVH.
+const API_BASE = window.MAMIE_API_BASE || "https://mamie.hoteldereims.com";
 const API_CODE_KEY = "mamie-banque-api-code";
 let remoteReady = false;
 let remoteSaving = false;
@@ -324,6 +325,30 @@ let state = load();
 let currentView = "home";
 let transactionReturnView = "home";
 
+// ---------- Comptes ----------
+// Une opération ou un récurrent sans compte (saisi avant les comptes) appartient au compte Mamie.
+const ACCOUNTS={mamie:"Compte Mamie", commun:"Compte commun"};
+// Préférence d'affichage propre au téléphone : hors du préfixe « mamie-banque », ce n'est pas une sauvegarde.
+const ACCOUNT_PREF_KEY="mb-compte-actif";
+let currentAccount=(()=>{ try{ const v=localStorage.getItem(ACCOUNT_PREF_KEY); return ACCOUNTS[v]?v:"mamie"; }catch{ return "mamie"; } })();
+function accountOf(x){ return x && ACCOUNTS[x.account] ? x.account : "mamie"; }
+function otherAccount(a=currentAccount){ return a==="mamie"?"commun":"mamie"; }
+function accountTx(list=state.transactions){ return list.filter(t=>accountOf(t)===currentAccount); }
+function accountRecurring(){ return state.recurring.filter(r=>accountOf(r)===currentAccount); }
+function setAccount(a){
+  if(!ACCOUNTS[a] || a===currentAccount) return;
+  currentAccount=a;
+  try{ localStorage.setItem(ACCOUNT_PREF_KEY,a); }catch{}
+  // Un formulaire en cours appartient à l'autre compte : on revient à l'accueil.
+  const lists=["home","expenses","statement","search","settings"];
+  render(lists.includes(currentView)?currentView:"home");
+}
+function openingBalance(acc=currentAccount){
+  const o=(state.openingBalances||{})[acc];
+  return o && /^\d{4}-\d{2}$/.test(o.month) ? {month:o.month, amount:Number(o.amount)||0} : null;
+}
+function localMonthKey(d=new Date()){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; }
+
 // Neutralisation du bouton ↻ historique présent dans index.html.
 const legacySeedBtn=document.getElementById("seedBtn");
 if(legacySeedBtn){
@@ -458,12 +483,12 @@ function currentMonthContext(){
   const y=now.getFullYear();
   const m=now.getMonth();
   const prefix=`${y}-${String(m+1).padStart(2,"0")}`;
-  const monthTx=state.transactions.filter(t =>
+  const monthTx=accountTx().filter(t =>
     !isLegacyDemoTransaction(t) &&
     typeof t.date==="string" &&
     t.date.slice(0,7)===prefix
   );
-  const recurring=state.recurring.filter(r=>!isLegacyDemoRecurring(r));
+  const recurring=accountRecurring().filter(r=>!isLegacyDemoRecurring(r));
   return {y,m,prefix,monthTx,recurring};
 }
 
@@ -566,6 +591,7 @@ function addView(defaultType="depense", unknown=false, editId=null){
         <button type="button" data-type="depense" class="${type==="depense"?"active":""}">Dépense</button>
         <button type="button" data-type="recette" class="${type==="recette"?"active":""}">Recette</button>
         <button type="button" data-type="prelevement" class="${type==="prelevement"?"active":""}">Prélèvement</button>
+        ${existing ? "" : `<button type="button" data-type="transfert">Virement vers ${ACCOUNTS[otherAccount()]}</button>`}
       </div>
 
       <input type="hidden" id="type" value="${escapeHtml(type)}" />
@@ -612,7 +638,7 @@ function addView(defaultType="depense", unknown=false, editId=null){
   `;
 }
 function statementView(){
-  const pending = sortedTx(state.transactions.filter(x=>!x.pointed));
+  const pending = sortedTx(accountTx().filter(x=>!x.pointed));
   const unknown = pending.filter(x=>x.unknown).length;
   return `
     <div class="notice">Coche les opérations présentes sur le relevé bancaire.</div>
@@ -650,7 +676,7 @@ function searchView(){
         <input id="toFilter" type="text" inputmode="numeric" placeholder="Au (JJ/MM/AAAA)" autocomplete="off" />
       </div>
     </div>
-    <div id="searchResults">${renderTxList(state.transactions)}</div>
+    <div id="searchResults">${renderTxList(accountTx())}</div>
   `;
 }
 
@@ -679,9 +705,20 @@ function recurringCard(r){
 }
 
 function settingsView(){
-  const recettes=state.recurring.filter(r=>r.type==="recette");
-  const prelevements=state.recurring.filter(r=>r.type==="prelevement");
+  const recettes=accountRecurring().filter(r=>r.type==="recette");
+  const prelevements=accountRecurring().filter(r=>r.type==="prelevement");
+  const o=openingBalance();
   return `
+    <div class="card form-card">
+      <div class="section-title" style="margin-top:0"><h2>Solde de départ · ${ACCOUNTS[currentAccount]}</h2></div>
+      <div class="meta">Le solde du relevé bancaire au 1er jour d’un mois. Les soldes des autres mois en seront déduits.</div>
+      <form id="openingForm">
+        <label>Mois<input id="openingMonth" type="month" required value="${o?o.month:localMonthKey()}"></label>
+        <label>Solde au 1er du mois<input id="openingAmount" type="number" inputmode="decimal" step="0.01" required value="${o?o.amount:""}" placeholder="0,00"></label>
+        <button class="primary" type="submit">Enregistrer le solde</button>
+      </form>
+    </div>
+
     <div class="card">
       <div class="section-title" style="margin-top:0">
         <h2>Recettes récurrentes</h2>
@@ -854,6 +891,7 @@ function importBackupFile(file){
 function render(view=currentView, options={}){
   currentView=view;
   document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
+  document.querySelectorAll("[data-account]").forEach(b=>b.classList.toggle("active",b.dataset.account===currentAccount));
   const app=document.getElementById("app");
   if(view==="home") app.innerHTML=homeView();
   if(view==="expenses") app.innerHTML=expensesView();
@@ -867,6 +905,18 @@ function render(view=currentView, options={}){
 }
 
 function bind(){
+  document.querySelectorAll("[data-account]").forEach(b=>b.onclick=()=>setAccount(b.dataset.account));
+  const openingForm=document.getElementById("openingForm");
+  if(openingForm) openingForm.onsubmit=e=>{
+    e.preventDefault();
+    const month=document.getElementById("openingMonth").value;
+    const amount=Number(document.getElementById("openingAmount").value);
+    if(!/^\d{4}-\d{2}$/.test(month) || !Number.isFinite(amount)) return;
+    state.openingBalances={...(state.openingBalances||{}), [currentAccount]:{month,amount}};
+    save("avant-solde-depart");
+    alert(`Solde de départ enregistré pour le ${ACCOUNTS[currentAccount]}.`);
+    render("settings");
+  };
   document.querySelectorAll("[data-jump]").forEach(b=>b.onclick=()=>render(b.dataset.jump));
   document.querySelectorAll(".nav-btn").forEach(b=>b.onclick=()=>render(b.dataset.view));
   const add=document.getElementById("addBtn");
@@ -897,8 +947,9 @@ function bind(){
     const editId=form && form.dataset.editId ? String(form.dataset.editId) : "";
     const tx=state.transactions.find(x=>String(x.id)===editId);
     if(!tx) return;
-    if(confirm(`Supprimer définitivement « ${tx.label} » de ${euro(Number(tx.amount)||0)} ?`)){
-      state.transactions=state.transactions.filter(x=>String(x.id)!==editId);
+    const both=tx.transferId ? "\n\nC’est un virement entre comptes : il sera supprimé des deux comptes." : "";
+    if(confirm(`Supprimer définitivement « ${tx.label} » de ${euro(Number(tx.amount)||0)} ?${both}`)){
+      state.transactions=state.transactions.filter(x=>String(x.id)!==editId && !(tx.transferId && x.transferId===tx.transferId));
       save("avant-suppression-operation");
       render(transactionReturnView || "home");
     }
@@ -1035,7 +1086,8 @@ function bind(){
         frequency,
         monthlyVariable:type==="prelevement" && frequency==="monthly" && monthlyVariableEl.checked,
         months:variable?schedule.map(x=>x.month):[...document.querySelectorAll("#monthsBox input:checked")].map(x=>Number(x.value)),
-        schedule
+        schedule,
+        account:idVal ? accountOf(state.recurring.find(x=>String(x.id)===String(idVal))) : currentAccount
       };
       if(idVal){
         const i=state.recurring.findIndex(x=>String(x.id)===String(obj.id)); if(i>=0) state.recurring[i]=obj;
@@ -1052,6 +1104,12 @@ function bind(){
       form.querySelector("#type").value=b.dataset.type;
       if(b.dataset.type==="prelevement") form.querySelector("#payment").value="Prélèvement";
       if(b.dataset.type==="recette") form.querySelector("#payment").value="Virement";
+      const label=form.querySelector("#label");
+      const transferLabel=normalizeLabel(`Virement vers ${ACCOUNTS[otherAccount()]}`);
+      if(b.dataset.type==="transfert"){
+        form.querySelector("#payment").value="Virement";
+        if(!label.value.trim()) label.value=transferLabel;
+      }else if(normalizeLabel(label.value)===transferLabel) label.value="";
     });
     form.onsubmit=e=>{
       e.preventDefault();
@@ -1070,14 +1128,38 @@ function bind(){
             payment:form.querySelector("#payment").value,
             unknown:form.querySelector("#unknown").checked
           };
+          // Un virement entre comptes existe des deux côtés : date et montant restent identiques.
+          if(previous.transferId){
+            const partner=state.transactions.find(x=>x.transferId===previous.transferId && String(x.id)!==String(previous.id));
+            if(partner){ partner.date=state.transactions[i].date; partner.amount=state.transactions[i].amount; }
+          }
           save("avant-modification-depense");
           render(transactionReturnView || "home");
           return;
         }
       }
 
+      if(form.querySelector("#type").value==="transfert"){
+        // Une seule saisie, deux opérations : sortie de ce compte, entrée sur l'autre.
+        const base=Date.now();
+        const to=otherAccount();
+        const date=form.querySelector("#date").value;
+        const amount=Number(form.querySelector("#amount").value);
+        state.transactions.push(
+          {id:base,type:"depense",date,amount,payment:"Virement",account:currentAccount,transferId:base,
+           label:normalizeLabel(form.querySelector("#label").value)||normalizeLabel(`Virement vers ${ACCOUNTS[to]}`),
+           unknown:false,pointed:false},
+          {id:base+1,type:"recette",date,amount,payment:"Virement",account:to,transferId:base,
+           label:normalizeLabel(`Virement de ${ACCOUNTS[currentAccount]}`),unknown:false,pointed:false}
+        );
+        save("avant-virement-entre-comptes");
+        render("home");
+        return;
+      }
+
       const tx={
         id:Date.now(),
+        account:currentAccount,
         type:form.querySelector("#type").value,
         date:form.querySelector("#date").value,
         label:normalizeLabel(form.querySelector("#label").value),
@@ -1114,7 +1196,7 @@ function generateRecurringForMonth(){
   // Prototype anchored to current device month.
   const y=now.getFullYear(), m=now.getMonth();
   let added=0;
-  state.recurring.forEach(r=>{
+  accountRecurring().forEach(r=>{
     const occurrence=expectedRecurringForMonth(r,m);
     if(!occurrence) return;
     const maxDay=new Date(y,m+1,0).getDate();
@@ -1125,7 +1207,7 @@ function generateRecurringForMonth(){
       state.transactions.push({
         id:Date.now()+Math.floor(Math.random()*100000),
         date:d,label:normalizeLabel(r.label),type:r.type,amount:Number(occurrence.amount)||0,payment:r.payment,
-        pointed:false,unknown:false,recurringId:r.id
+        pointed:false,unknown:false,recurringId:r.id,account:currentAccount
       });
       added++;
     }
@@ -1154,7 +1236,7 @@ function applySearch(){
   const max=parseFloat(document.getElementById("maxFilter").value);
   const from=frDateToIso(document.getElementById("fromFilter").value);
   const to=frDateToIso(document.getElementById("toFilter").value);
-  const list=state.transactions.filter(x=>{
+  const list=accountTx().filter(x=>{
     const matchesQ=!q || x.label.toLowerCase().includes(q) || String(x.amount).replace(".",",").includes(q) || String(x.amount).includes(q);
     return matchesQ && (!t||x.type===t) && (!p||x.payment===p) &&
       (isNaN(min)||x.amount>=min) && (isNaN(max)||x.amount<=max) &&
