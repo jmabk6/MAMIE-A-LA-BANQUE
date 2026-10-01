@@ -464,9 +464,15 @@ textarea {
 #categoryField[hidden]{display:none}
 
 /* Validation du solde de fin */
-.month-bal strong.provisional{color:var(--muted);font-weight:600;font-style:italic}
 .validation-card{margin-top:12px}
 .validation-card.validated{background:#e9f7ed;color:#226b3a}
 .gap-ok{color:#157741;font-weight:700;margin-top:6px}
 .gap-ko{color:#b65d00;font-weight:700;margin-top:6px}
 .primary:disabled{opacity:.45}
+
+/* Liste des mois : solde du mois et cumul depuis le début de l'app */
+.month-row{grid-template-columns:1fr auto auto;row-gap:6px}
+.month-sums{grid-column:1/-1;display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted)}
+.month-sums strong{font-size:13px;margin-left:4px}
+.month-sums .cumul{color:var(--brand)}
+.month-bal strong.provisional{font-weight:600;font-style:italic}

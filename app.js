@@ -673,22 +673,6 @@ function bankEffect(t){
   const a=Number(t.amount)||0;
   return t.type==="recette" ? a : -a;
 }
-function monthRange(scope){
-  const keys=[localMonthKey()];
-  scopeAccounts(scope).forEach(acc=>{
-    datedAccountTx(acc).forEach(t=>keys.push(t.date.slice(0,7)));
-    const o=openingBalance(acc); if(o) keys.push(o.month);
-  });
-  keys.sort();
-  const out=[];
-  let [y,m]=keys[0].split("-").map(Number);
-  const last=keys[keys.length-1];
-  for(let k=keys[0]; k<=last; k=`${y}-${String(m).padStart(2,"0")}`){
-    out.push(k);
-    m++; if(m===13){ m=1; y++; }
-  }
-  return out;
-}
 // Un solde de fin n'est une donnée sûre qu'une fois validé par l'utilisateur, relevé en main
 // (écart nul). Le mois est alors verrouillé : plus d'ajout, de modification ni de suppression
 // d'opération de ce mois sur ce compte, jusqu'au déverrouillage.
@@ -792,23 +776,58 @@ function monthsTabsHtml(scope){
   </div>`;
 }
 
+// Mois affichés : du mois du solde de départ jusqu'au premier mois dont le précédent
+// n'est pas validé (jamais au-delà du mois en cours). En Global, il faut les deux comptes.
+function visibleMonths(scope){
+  const accs=scopeAccounts(scope);
+  if(accs.some(acc=>!openingBalance(acc))) return [];
+  const first=accs.map(acc=>openingBalance(acc).month).sort()[0];
+  const current=localMonthKey();
+  const out=[];
+  let [y,m]=first.split("-").map(Number);
+  for(let k=first; ; ){
+    out.push(k);
+    const validated=accs.every(acc=>openingBalance(acc).month>k || isMonthLocked(acc,k));
+    m++; if(m===13){ m=1; y++; }
+    k=`${y}-${String(m).padStart(2,"0")}`;
+    if(!validated || k>current) break;
+  }
+  return out;
+}
+// Cumul depuis le début de l'app : somme des soldes des mois depuis le solde de départ.
+function cumulSince(key, scope){
+  return scopeAccounts(scope).reduce((sum,acc)=>{
+    const o=openingBalance(acc);
+    if(o.month>key) return sum;
+    return sum + accountMonthSummary(key,acc).end - o.amount;
+  },0);
+}
+function signClass(v){ return v<0 ? "red" : "blue"; }
+function signedEuro(v){ return `${v<0?"-":"+"}${euro(Math.abs(v))}`; }
+
 function monthsView(){
   const scope=currentMonthsScope();
   const missing=scopeAccounts(scope).filter(acc=>!openingBalance(acc)).map(acc=>ACCOUNTS[acc]);
   const byYear={};
-  monthRange(scope).reverse().forEach(k=>{ (byYear[k.slice(0,4)] ||= []).push(k); });
+  visibleMonths(scope).reverse().forEach(k=>{ (byYear[k.slice(0,4)] ||= []).push(k); });
   return `
     ${monthsTabsHtml(scope)}
-    ${missing.length ? `<div class="notice orange">Pour voir les soldes, indique le solde de départ du ${missing.join(" et du ")} dans Réglages.</div>` : ""}
+    ${missing.length ? `<div class="notice orange">Pour voir les mois, indique le solde de départ du ${missing.join(" et du ")} dans Réglages.</div>` : ""}
     ${Object.keys(byYear).sort().reverse().map(y=>`
       <section class="section-title"><h2>${y}</h2></section>
       <div class="card">
         ${byYear[y].map(k=>{
           const s=monthSummary(k,scope);
+          const net=s.end-s.start;
+          const cumul=cumulSince(k,scope);
           return `<div class="month-row" data-open-month="${k}" role="button" tabindex="0">
             <div class="month-name"><strong>${MONTH_FULL[Number(k.slice(5))-1]}</strong><div class="meta">${s.tx.length} opération(s)</div></div>
-            <div class="month-bal"><small>Début</small><span>${balanceText(s.start)}</span></div>
-            <div class="month-bal"><small>${s.validation?"Fin ✓":"Fin provisoire"}</small><strong class="${s.validation?"":"provisional"} ${s.end!==null&&s.end<0?"red":""}">${balanceText(s.end)}</strong></div>
+            <div class="month-bal"><small>Début</small><span class="${signClass(s.start)}">${euro(s.start)}</span></div>
+            <div class="month-bal"><small>${s.validation?"Fin ✓":"Fin provisoire"}</small><strong class="${s.validation?"":"provisional"} ${signClass(s.end)}">${euro(s.end)}</strong></div>
+            <div class="month-sums">
+              <span>Solde du mois <strong class="${signClass(net)}">${signedEuro(net)}</strong></span>
+              <span>Cumulé <strong class="${cumul<0?"red":"cumul"}">${signedEuro(cumul)}</strong></span>
+            </div>
           </div>`;
         }).join("")}
       </div>`).join("")}
