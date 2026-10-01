@@ -369,6 +369,7 @@ function categorySelectHtml(id, selected){
     ${[...list,...extra].map(c=>`<option ${c===selected?"selected":""}>${escapeHtml(c)}</option>`).join("")}
   </select>`;
 }
+function todayIso(d=new Date()){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
 function localMonthKey(d=new Date()){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; }
 
 // Neutralisation du bouton ↻ historique présent dans index.html.
@@ -454,9 +455,9 @@ function monthApplies(r, monthIndex){
   const interval={bimonthly:2,quarterly:3,semiannual:6,annual:12}[f]||1;
   return monthIndex%interval===0;
 }
-function renderTxList(list, showAccount=false){
+function renderTxList(list, showAccount=false, sort=true){
   if(!list.length) return '<div class="empty">Aucune opération</div>';
-  return `<div class="card">${sortedTx(list).map(tx=>`
+  return `<div class="card">${(sort?sortedTx(list):list).map(tx=>`
     <div class="tx tx-editable" data-edit-tx="${tx.id}" role="button" tabindex="0" aria-label="Modifier ${escapeHtml(tx.label)}">
       <div class="tx-main">
         <strong>${escapeHtml(tx.label)} ${statusBadge(tx)}</strong>
@@ -553,9 +554,11 @@ function homeView(){
     .filter(t=>t.type==="depense")
     .reduce((s,t)=>s+(Number(t.amount)||0),0);
 
-  const pre =
-    recurringPrelevements.reduce((s,r)=>s+actualOrExpectedRecurringAmount(r,monthTx,m),0) +
-    extraPrelevements.reduce((s,t)=>s+(Number(t.amount)||0),0);
+  // Grosses échéances (non mensuelles) du mois : payées avec les mises de côté, pas retirées du reste.
+  const bigDues=recurringPrelevements
+    .filter(r=>(r.frequency||"monthly")!=="monthly")
+    .map(r=>({label:normalizeLabel(r.label), amount:actualOrExpectedRecurringAmount(r,monthTx,m)}));
+  const bigDuesTotal=bigDues.reduce((s,x)=>s+x.amount,0);
 
   const monthlyPreBudget =
     recurring
@@ -569,24 +572,27 @@ function homeView(){
 
   const available=rec-dep-monthlyPreBudget-provisions;
 
+  const today=todayIso();
+  const upcoming=sortedTx(allMonthTx.filter(t=>t.recurringId && !t.transferId && t.date>=today)).reverse();
+  const lastExpenses=sortedTx(monthTx.filter(t=>t.type==="depense")).slice(0,5);
+
   return `
     <section class="hero card">
-      <small>Reste à dépenser · ${MONTH_FULL[m]} ${ctx.y}</small>
+      <small>Reste à dépenser · ${MONTH_FULL[m]} ${ctx.y} · les deux comptes</small>
       <div class="balance">${euro(available)}</div>
-      <div class="meta" style="color:#d7efef">Les deux comptes : recettes du mois − dépenses − prélèvements mensuels − mises de côté</div>
+      <div class="calc-lines hero-calc">
+        <div><span>Recettes du mois</span><strong class="hero-credit">+${euro(rec)}</strong></div>
+        <div><span>Prélèvements mensuels</span><strong class="hero-debit">-${euro(monthlyPreBudget)}</strong></div>
+        <div><span>Mises de côté (gros prélèvements)</span><strong class="hero-debit">-${euro(provisions)}</strong></div>
+        <div><span>Dépenses du mois</span><strong class="hero-debit">-${euro(dep)}</strong></div>
+      </div>
     </section>
-    <section class="grid">
-      <div class="stat"><small>Recettes</small><strong class="blue">${euro(rec)}</strong></div>
-      <div class="stat"><small>Dépenses</small><strong class="red">${euro(dep)}</strong></div>
-      <div class="stat"><small>Prélèvements</small><strong class="red">${euro(pre)}</strong></div>
-    </section>
-    <section class="card provision-card">
-      <div><small>Mis de côté chaque mois</small><strong class="orange">${euro(provisions)}</strong></div>
-      <div class="meta">Pour préparer les prélèvements trimestriels, semestriels, annuels ou personnalisés.</div>
-    </section>
+    ${bigDues.length ? `<div class="notice big-dues">Échéances payées ce mois avec les mises de côté : <strong>${euro(bigDuesTotal)}</strong><div class="meta">${bigDues.map(x=>escapeHtml(x.label)).join(", ")}</div></div>` : ""}
     <button class="fab" id="addBtn" data-default-account="mamie">+ Ajouter une dépense</button>
-    <section class="section-title"><h2>Dernières opérations du mois</h2><button class="link-btn" data-jump="search">Voir tout</button></section>
-    ${renderTxList(sortedTx(allMonthTx).slice(0,5), true)}
+    <section class="section-title"><h2>À venir ce mois-ci</h2></section>
+    ${upcoming.length ? renderTxList(upcoming, true, false) : '<div class="empty">Plus rien de prévu ce mois-ci</div>'}
+    <section class="section-title"><h2>Dernières dépenses</h2><button class="link-btn" id="seeMonthBtn">Voir tout le mois</button></section>
+    ${renderTxList(lastExpenses, true)}
   `;
 }
 
@@ -1292,6 +1298,8 @@ function bind(){
     state.recurring.forEach(r=>{ if(r.category===old) delete r.category; });
     save("avant-suppression-categorie"); render("settings");
   });
+  const seeMonthBtn=document.getElementById("seeMonthBtn");
+  if(seeMonthBtn) seeMonthBtn.onclick=()=>{ monthsScope="global"; detailView="date"; render("monthDetail",{month:localMonthKey()}); };
   document.querySelectorAll("[data-statement-filter]").forEach(b=>b.onclick=()=>{ statementFilter=b.dataset.statementFilter; render("statement"); });
   document.querySelectorAll("[data-detail-view]").forEach(b=>b.onclick=()=>{ detailView=b.dataset.detailView; render("monthDetail"); });
   document.querySelectorAll("[data-toggle-group]").forEach(b=>b.onclick=()=>{
@@ -1425,10 +1433,17 @@ function bind(){
     if(r) render("recurringForm",{type:r.type,id});
   });
   document.querySelectorAll("[data-delete-recurring]").forEach(b=>b.onclick=()=>{
-    const id=Number(b.dataset.deleteRecurring);
-    if(confirm("Supprimer ce modèle récurrent ?")){
-      state.recurring=state.recurring.filter(x=>x.id!==id); save(); render("settings");
+    const id=String(b.dataset.deleteRecurring);
+    const r=state.recurring.find(x=>String(x.id)===id);
+    if(!r || !confirm(`Supprimer le récurrent « ${normalizeLabel(r.label)} » ?`)) return;
+    state.recurring=state.recurring.filter(x=>String(x.id)!==id);
+    // Ses opérations déjà créées, ni pointées ni dans un mois validé, n'ont plus de raison d'être.
+    const pending=state.transactions.filter(t=>String(t.recurringId)===id && !t.pointed && !txLocked(t));
+    if(pending.length && confirm(`Supprimer aussi ${pending.length} opération(s) ${normalizeLabel(r.label)} déjà créée(s), pas encore pointée(s) ?\n\n${pending.map(t=>`${fmtDate(t.date)} · ${euro(Number(t.amount)||0)}`).join("\n")}`)){
+      const ids=new Set(pending.map(t=>String(t.id)));
+      state.transactions=state.transactions.filter(t=>!ids.has(String(t.id)));
     }
+    save("avant-suppression-recurrent"); render("settings");
   });
 
   document.querySelectorAll("[data-point]").forEach(cb=>{
