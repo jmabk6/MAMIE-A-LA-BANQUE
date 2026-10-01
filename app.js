@@ -924,11 +924,13 @@ function statementView(){
     </div>
     <div class="card">
       ${shown.length ? shown.map(tx=>`
-        <label class="reconcile-item">
-          <input type="checkbox" data-point="${tx.id}" ${tx.pointed?"checked":""}>
-          <div><strong>${escapeHtml(tx.label)} ${statusBadge(tx)}</strong><div class="meta">${fmtDate(tx.date)} · ${escapeHtml(tx.payment)}${tx.transferId?"":` · ${escapeHtml(tx.category||NO_CATEGORY)}`}</div></div>
-          <div class="amount ${typeClass(tx)}">${tx.type==="recette"?"+":"-"}${euro(tx.amount)}</div>
-        </label>`).join("") : `<div class="empty">${list.length ? "Aucune opération dans cet onglet" : "Aucune opération ce mois-ci"}</div>`}
+        <div class="reconcile-item">
+          <label class="point-zone" aria-label="Pointer ${escapeHtml(tx.label)}"><input type="checkbox" data-point="${tx.id}" ${tx.pointed?"checked":""}></label>
+          <div class="reconcile-open" data-edit-tx="${tx.id}" role="button" tabindex="0" aria-label="Ouvrir ${escapeHtml(tx.label)}">
+            <div><strong>${escapeHtml(tx.label)} ${statusBadge(tx)}</strong><div class="meta">${fmtDate(tx.date)} · ${escapeHtml(tx.payment)}${tx.transferId?"":` · ${escapeHtml(tx.category||NO_CATEGORY)}`}</div></div>
+            <div class="amount ${typeClass(tx)}">${tx.type==="recette"?"+":"-"}${euro(tx.amount)}</div>
+          </div>
+        </div>`).join("") : `<div class="empty">${list.length ? "Aucune opération dans cet onglet" : "Aucune opération ce mois-ci"}</div>`}
     </div>
     <button class="fab" id="statementAddBtn" data-month="${key}">+ Ajouter une opération non prévue</button>
     ${statementValidationHtml()}

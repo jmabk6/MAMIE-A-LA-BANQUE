@@ -491,3 +491,9 @@ textarea {
 /* Relevé : onglets À vérifier / Pointé / Non prévu / Tout */
 .statement-filters{grid-template-columns:repeat(4,1fr);margin:12px 0}
 .statement-filters button{font-size:11px;padding:10px 2px}
+
+/* Relevé : la coche (et sa marge) pointe, le reste de la ligne ouvre l'opération */
+.reconcile-item{grid-template-columns:48px 1fr;gap:0;padding:0}
+.point-zone{display:flex;align-items:center;justify-content:center;align-self:stretch;min-height:56px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.point-zone input{width:22px;height:22px;margin:0}
+.reconcile-open{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:13px 0;cursor:pointer;-webkit-tap-highlight-color:transparent}
