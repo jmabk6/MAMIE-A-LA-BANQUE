@@ -356,7 +356,11 @@ function openingBalance(acc=currentAccount){
 // Un virement entre comptes n'a pas de catégorie : ce n'est pas une dépense.
 const DEFAULT_CATEGORIES=["Alimentation","Essence","Petit matériel","Assurance","Téléphone","Santé / pharmacie","Énergie","Logement","Loisirs","Cadeaux","Divers"];
 const NO_CATEGORY="Sans catégorie";
-function categories(){ return Array.isArray(state.categories) ? state.categories : DEFAULT_CATEGORIES.slice(); }
+// Toujours dans l'ordre alphabétique (« Énergie » avec les E).
+function categories(){
+  const list=Array.isArray(state.categories) ? state.categories : DEFAULT_CATEGORIES;
+  return [...list].sort((a,b)=>a.localeCompare(b,"fr",{sensitivity:"base"}));
+}
 function categorySelectHtml(id, selected){
   const list=categories();
   const extra=selected && !list.includes(selected) ? [selected] : [];
