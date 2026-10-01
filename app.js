@@ -502,17 +502,18 @@ function isLegacyDemoTransaction(t){
   );
 }
 
-function currentMonthContext(){
+function currentMonthContext(scope=currentAccount){
   const now=new Date();
   const y=now.getFullYear();
   const m=now.getMonth();
   const prefix=`${y}-${String(m+1).padStart(2,"0")}`;
-  const monthTx=accountTx().filter(t =>
+  const monthTx=state.transactions.filter(t =>
+    (scope==="global" || accountOf(t)===scope) &&
     !isLegacyDemoTransaction(t) &&
     typeof t.date==="string" &&
     t.date.slice(0,7)===prefix
   );
-  const recurring=accountRecurring().filter(r=>!isLegacyDemoRecurring(r));
+  const recurring=state.recurring.filter(r=>(scope==="global" || accountOf(r)===scope) && !isLegacyDemoRecurring(r));
   return {y,m,prefix,monthTx,recurring};
 }
 
@@ -526,8 +527,16 @@ function actualOrExpectedRecurringAmount(r, monthTx, monthIndex){
   return 0;
 }
 
+// L'Accueil réunit les deux comptes. Le reste à dépenser ignore les virements entre comptes
+// (ils ne font que passer d'un compte à l'autre) et les retraits au distributeur (l'argent
+// retiré est compté quand ta mère note ses dépenses en espèces).
+const CASH_WITHDRAWAL="Retrait d'espèces";
+function countsInBudget(t){ return !t.transferId && t.payment!==CASH_WITHDRAWAL; }
 function homeView(){
-  const {m,monthTx,recurring}=currentMonthContext();
+  const ctx=currentMonthContext("global");
+  const {m,recurring}=ctx;
+  const allMonthTx=ctx.monthTx;
+  const monthTx=allMonthTx.filter(countsInBudget);
 
   const recurringRecettes=recurring.filter(r=>r.type==="recette" && monthApplies(r,m));
   const recurringPrelevements=recurring.filter(r=>r.type==="prelevement" && monthApplies(r,m));
@@ -562,9 +571,9 @@ function homeView(){
 
   return `
     <section class="hero card">
-      <small>Disponible à dépenser</small>
+      <small>Reste à dépenser · ${MONTH_FULL[m]} ${ctx.y}</small>
       <div class="balance">${euro(available)}</div>
-      <div class="meta" style="color:#d7efef">Recettes du mois − dépenses − prélèvements mensuels − provisions</div>
+      <div class="meta" style="color:#d7efef">Les deux comptes : recettes du mois − dépenses − prélèvements mensuels − mises de côté</div>
     </section>
     <section class="grid">
       <div class="stat"><small>Recettes</small><strong class="blue">${euro(rec)}</strong></div>
@@ -575,9 +584,9 @@ function homeView(){
       <div><small>Mis de côté chaque mois</small><strong class="orange">${euro(provisions)}</strong></div>
       <div class="meta">Pour préparer les prélèvements trimestriels, semestriels, annuels ou personnalisés.</div>
     </section>
-    <button class="fab" id="addBtn">+ Ajouter une dépense</button>
+    <button class="fab" id="addBtn" data-default-account="mamie">+ Ajouter une dépense</button>
     <section class="section-title"><h2>Dernières opérations du mois</h2><button class="link-btn" data-jump="search">Voir tout</button></section>
-    ${renderTxList(sortedTx(monthTx).slice(0,5))}
+    ${renderTxList(sortedTx(allMonthTx).slice(0,5), true)}
   `;
 }
 
@@ -590,7 +599,7 @@ function expensesView(){
   `;
 }
 
-function addView(defaultType="depense", unknown=false, editId=null, defaultDate=null){
+function addView(defaultType="depense", unknown=false, editId=null, defaultDate=null, defaultAccount=null){
   const existing = editId!==null
     ? state.transactions.find(x=>String(x.id)===String(editId))
     : null;
@@ -607,7 +616,8 @@ function addView(defaultType="depense", unknown=false, editId=null, defaultDate=
 
   const type = tx.type || "depense";
   const payment = tx.payment || "Carte bancaire";
-  const payments=["Carte bancaire","Prélèvement","Virement","Espèces","Chèque"];
+  const formAccount = ACCOUNTS[defaultAccount] ? defaultAccount : currentAccount;
+  const payments=["Carte bancaire","Prélèvement","Virement","Espèces","Retrait d'espèces","Chèque"];
 
   return `
     <form id="transactionForm" class="card form-card" data-edit-id="${existing ? escapeHtml(String(existing.id)) : ""}">
@@ -615,8 +625,14 @@ function addView(defaultType="depense", unknown=false, editId=null, defaultDate=
         <button type="button" data-type="depense" class="${type==="depense"?"active":""}">Dépense</button>
         <button type="button" data-type="recette" class="${type==="recette"?"active":""}">Recette</button>
         <button type="button" data-type="prelevement" class="${type==="prelevement"?"active":""}">Prélèvement</button>
-        ${existing ? "" : `<button type="button" data-type="transfert">Virement vers ${ACCOUNTS[otherAccount()]}</button>`}
+        ${existing ? "" : `<button type="button" data-type="transfert">Virement vers ${ACCOUNTS[otherAccount(formAccount)]}</button>`}
       </div>
+
+      ${existing ? "" : `<label>Compte
+        <select id="txAccount">
+          ${Object.keys(ACCOUNTS).map(a=>`<option value="${a}" ${a===formAccount?"selected":""}>${ACCOUNTS[a]}</option>`).join("")}
+        </select>
+      </label>`}
 
       <input type="hidden" id="type" value="${escapeHtml(type)}" />
 
@@ -746,7 +762,7 @@ function detailGroups(tx, view){
     ? t=>t.payment||"Autre"
     : t=>t.transferId ? TRANSFER_GROUP : (t.category||NO_CATEGORY);
   const order = view==="paiement"
-    ? ["Carte bancaire","Prélèvement","Virement","Espèces","Chèque"]
+    ? ["Carte bancaire","Prélèvement","Virement","Espèces","Retrait d'espèces","Chèque"]
     : [...categories(), NO_CATEGORY, TRANSFER_GROUP];
   const names=[...new Set(tx.map(keyOf))].sort((a,b)=>{
     const ia=order.indexOf(a), ib=order.indexOf(b);
@@ -965,7 +981,7 @@ function searchView(){
         </select>
         <select id="payFilter">
           <option value="">Tous les paiements</option>
-          <option>Carte bancaire</option><option>Prélèvement</option><option>Virement</option><option>Espèces</option><option>Chèque</option>
+          <option>Carte bancaire</option><option>Prélèvement</option><option>Virement</option><option>Espèces</option><option>Retrait d'espèces</option><option>Chèque</option>
         </select>
         <input id="minFilter" type="number" step="0.01" placeholder="Montant min." />
         <input id="maxFilter" type="number" step="0.01" placeholder="Montant max." />
@@ -1212,7 +1228,7 @@ function render(view=currentView, options={}){
   const navView = view==="monthDetail" ? "months" : view;
   document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("active",b.dataset.view===navView));
   const topSwitch=document.querySelector(".account-switch:not(.months-tabs)");
-  if(topSwitch) topSwitch.hidden = navView==="months";
+  if(topSwitch) topSwitch.hidden = navView==="months" || navView==="home";
   document.querySelectorAll("[data-account]").forEach(b=>b.classList.toggle("active",b.dataset.account===currentAccount));
   const app=document.getElementById("app");
   if(view==="home") app.innerHTML=homeView();
@@ -1225,7 +1241,7 @@ function render(view=currentView, options={}){
   if(view==="statement") app.innerHTML=statementView();
   if(view==="search") app.innerHTML=searchView();
   if(view==="settings") app.innerHTML=settingsView();
-  if(view==="add") app.innerHTML=addView(options.type||"depense",!!options.unknown,null,options.date||null);
+  if(view==="add") app.innerHTML=addView(options.type||"depense",!!options.unknown,null,options.date||null,options.account||null);
   if(view==="editTransaction") app.innerHTML=addView("depense",false,options.id);
   if(view==="recurringForm") app.innerHTML=recurringFormView(options.type,options.id||null,options.account||null);
   bind();
@@ -1337,7 +1353,7 @@ function bind(){
   document.querySelectorAll("[data-jump]").forEach(b=>b.onclick=()=>render(b.dataset.jump));
   document.querySelectorAll(".nav-btn").forEach(b=>b.onclick=()=>render(b.dataset.view));
   const add=document.getElementById("addBtn");
-  if(add) add.onclick=()=>{ transactionReturnView="home"; render("add",{type:"depense"}); };
+  if(add) add.onclick=()=>{ transactionReturnView=currentView; render("add",{type:"depense",account:add.dataset.defaultAccount||null}); };
   const stAdd=document.getElementById("statementAddBtn");
   if(stAdd) stAdd.onclick=()=>{
     // Daté d'aujourd'hui si on est dans le mois du relevé, sinon du dernier jour de ce mois.
@@ -1538,6 +1554,16 @@ function bind(){
 
   const form=document.getElementById("transactionForm");
   if(form){
+    const formAcc=()=>{ const sel=form.querySelector("#txAccount"); return sel && ACCOUNTS[sel.value] ? sel.value : currentAccount; };
+    const accountSel=form.querySelector("#txAccount");
+    if(accountSel) accountSel.onchange=()=>{
+      const btn=form.querySelector('#typeSegment [data-type="transfert"]');
+      const label=form.querySelector("#label");
+      const before=normalizeLabel(`Virement vers ${ACCOUNTS[accountSel.value]}`);
+      const after=normalizeLabel(`Virement vers ${ACCOUNTS[otherAccount(accountSel.value)]}`);
+      if(btn) btn.textContent=`Virement vers ${ACCOUNTS[otherAccount(accountSel.value)]}`;
+      if(normalizeLabel(label.value)===before) label.value=after;
+    };
     form.querySelectorAll("#typeSegment button").forEach(b=>b.onclick=()=>{
       form.querySelectorAll("#typeSegment button").forEach(x=>x.classList.remove("active"));
       b.classList.add("active");
@@ -1545,7 +1571,7 @@ function bind(){
       if(b.dataset.type==="prelevement") form.querySelector("#payment").value="Prélèvement";
       if(b.dataset.type==="recette") form.querySelector("#payment").value="Virement";
       const label=form.querySelector("#label");
-      const transferLabel=normalizeLabel(`Virement vers ${ACCOUNTS[otherAccount()]}`);
+      const transferLabel=normalizeLabel(`Virement vers ${ACCOUNTS[otherAccount(formAcc())]}`);
       const categoryField=form.querySelector("#categoryField");
       if(categoryField){
         categoryField.hidden=b.dataset.type==="transfert";
@@ -1591,29 +1617,30 @@ function bind(){
       }
 
       if(form.querySelector("#type").value==="transfert"){
-        const blockedAcc=[currentAccount, otherAccount()].find(a=>isMonthLocked(a,newDate.slice(0,7)));
+        const from=formAcc();
+        const blockedAcc=[from, otherAccount(from)].find(a=>isMonthLocked(a,newDate.slice(0,7)));
         if(blockedAcc){ alert(lockedMessage({account:blockedAcc}, newDate)); return; }
         // Une seule saisie, deux opérations : sortie de ce compte, entrée sur l'autre.
         const base=Date.now();
-        const to=otherAccount();
+        const to=otherAccount(from);
         const date=form.querySelector("#date").value;
         const amount=Number(form.querySelector("#amount").value);
         state.transactions.push(
-          {id:base,type:"depense",date,amount,payment:"Virement",account:currentAccount,transferId:base,
+          {id:base,type:"depense",date,amount,payment:"Virement",account:from,transferId:base,
            label:normalizeLabel(form.querySelector("#label").value)||normalizeLabel(`Virement vers ${ACCOUNTS[to]}`),
            unknown:false,pointed:false},
           {id:base+1,type:"recette",date,amount,payment:"Virement",account:to,transferId:base,
-           label:normalizeLabel(`Virement de ${ACCOUNTS[currentAccount]}`),unknown:false,pointed:false}
+           label:normalizeLabel(`Virement de ${ACCOUNTS[from]}`),unknown:false,pointed:false}
         );
         save("avant-virement-entre-comptes");
-        render("home");
+        render(transactionReturnView || "home");
         return;
       }
 
-      if(isMonthLocked(currentAccount,newDate.slice(0,7))){ alert(lockedMessage({account:currentAccount}, newDate)); return; }
+      if(isMonthLocked(formAcc(),newDate.slice(0,7))){ alert(lockedMessage({account:formAcc()}, newDate)); return; }
       const tx={
         id:Date.now(),
-        account:currentAccount,
+        account:formAcc(),
         type:form.querySelector("#type").value,
         date:form.querySelector("#date").value,
         label:normalizeLabel(form.querySelector("#label").value),
@@ -1625,7 +1652,7 @@ function bind(){
       };
       state.transactions.push(tx);
       save("avant-ajout-operation");
-      render(tx.unknown?"statement":"home");
+      render(transactionReturnView || (tx.unknown?"statement":"home"));
     };
   }
 
