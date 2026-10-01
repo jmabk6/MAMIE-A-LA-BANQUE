@@ -376,7 +376,8 @@ if(legacySeedBtn){
 
 function euro(n){ return new Intl.NumberFormat("fr-FR",{style:"currency",currency:"EUR"}).format(n); }
 function fmtDate(d){ return new Date(d+"T12:00:00").toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"}); }
-function typeClass(tx){ return tx.type==="recette"?"green":tx.type==="depense"?"red":"blue"; }
+// Partout : crédits en bleu, débits (dépenses et prélèvements) en rouge.
+function typeClass(tx){ return tx.type==="recette"?"blue":"red"; }
 function statusBadge(tx){
   if(tx.unknown) return '<span class="badge orange">NOUVEAU</span>';
   if(tx.pointed) return '<span class="badge green">POINTÉ</span>';
@@ -558,9 +559,9 @@ function homeView(){
       <div class="meta" style="color:#d7efef">Recettes du mois − dépenses − prélèvements mensuels − provisions</div>
     </section>
     <section class="grid">
-      <div class="stat"><small>Recettes</small><strong class="green">${euro(rec)}</strong></div>
+      <div class="stat"><small>Recettes</small><strong class="blue">${euro(rec)}</strong></div>
       <div class="stat"><small>Dépenses</small><strong class="red">${euro(dep)}</strong></div>
-      <div class="stat"><small>Prélèvements</small><strong class="blue">${euro(pre)}</strong></div>
+      <div class="stat"><small>Prélèvements</small><strong class="red">${euro(pre)}</strong></div>
     </section>
     <section class="card provision-card">
       <div><small>Mis de côté chaque mois</small><strong class="orange">${euro(provisions)}</strong></div>
@@ -858,7 +859,7 @@ function monthDetailView(key){
     ${global ? "" : validationCardHtml(s)}
     <section class="section-title"><h2>Opérations</h2></section>
     ${detailFiltersHtml(s.tx)}
-    <div class="month-ops">${renderTxList(filterTx(s.tx), global)}</div>
+    ${renderTxList(filterTx(s.tx), global)}
   `;
 }
 
@@ -922,7 +923,7 @@ function recurringCard(r){
         ${provision?`<div class="provision-line">À provisionner : <strong>${euro(provision)}/mois</strong></div>`:""}
       </div>
       <div class="recurring-actions">
-        ${schedule.length ? "" : `<strong class="${r.type==="recette"?"green":"blue"}">${euro(r.amount)}</strong>`}
+        ${schedule.length ? "" : `<strong class="${r.type==="recette"?"blue":"red"}">${euro(r.amount)}</strong>`}
         <button class="mini-btn" data-edit-recurring="${r.id}">Modifier</button>
         <button class="mini-btn danger" data-delete-recurring="${r.id}">Suppr.</button>
       </div>
@@ -1139,9 +1140,6 @@ function render(view=currentView, options={}){
   currentView=view;
   const navView = view==="monthDetail" ? "months" : view;
   document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("active",b.dataset.view===navView));
-  // Les écrans Mois couvrent tous les mois : le mois en cours affiché en haut y prêterait à confusion.
-  const eyebrow=document.querySelector(".topbar .eyebrow");
-  if(eyebrow) eyebrow.hidden = navView==="months";
   const topSwitch=document.querySelector(".account-switch:not(.months-tabs)");
   if(topSwitch) topSwitch.hidden = navView==="months";
   document.querySelectorAll("[data-account]").forEach(b=>b.classList.toggle("active",b.dataset.account===currentAccount));

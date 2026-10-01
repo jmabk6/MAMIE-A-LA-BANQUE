@@ -470,7 +470,3 @@ textarea {
 .gap-ok{color:#157741;font-weight:700;margin-top:6px}
 .gap-ko{color:#b65d00;font-weight:700;margin-top:6px}
 .primary:disabled{opacity:.45}
-
-/* Écran Mois : crédits en bleu, débits (dépenses et prélèvements) en rouge */
-.month-ops .amount.green{color:var(--blue)}
-.month-ops .amount.blue{color:var(--red)}
