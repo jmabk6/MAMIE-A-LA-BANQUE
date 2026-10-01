@@ -808,6 +808,12 @@ function cumulSince(key, scope){
     return sum + accountMonthSummary(key,acc).end - o.amount;
   },0);
 }
+// Début + crédits − débits = fin calculée ; les espèces ne passent pas par la banque.
+function creditsDebits(tx){
+  const bank=tx.filter(t=>t.payment!=="Espèces");
+  const sum=list=>list.reduce((s,t)=>s+(Number(t.amount)||0),0);
+  return {credits:sum(bank.filter(t=>t.type==="recette")), debits:sum(bank.filter(t=>t.type!=="recette"))};
+}
 function signClass(v){ return v<0 ? "red" : "blue"; }
 function signedEuro(v){ return `${v<0?"-":"+"}${euro(Math.abs(v))}`; }
 
@@ -829,7 +835,7 @@ function monthsView(){
           return `<div class="month-row" data-open-month="${k}" role="button" tabindex="0">
             <div class="month-name"><strong>${MONTH_FULL[Number(k.slice(5))-1]}</strong><div class="meta">${s.tx.length} opération(s)</div></div>
             <div class="month-bal"><small>Début</small><span class="${signClass(s.start)}">${euro(s.start)}</span></div>
-            <div class="month-bal"><small>${s.validation?"Fin ✓":"Fin provisoire"}</small><strong class="${s.validation?"":"provisional"} ${signClass(s.end)}">${euro(s.end)}</strong></div>
+            <div class="month-bal"><small>${s.validation?"Fin ✓":"Fin calculée"}</small><strong class="${s.validation?"":"provisional"} ${signClass(s.end)}">${euro(s.end)}</strong></div>
             <div class="month-sums">
               <span>Solde du mois <strong class="${net<0?"red":"green"}">${signedEuro(net)}</strong></span>
               <span>Cumulé <strong class="${cumul<0?"red":"cumul"}">${signedEuro(cumul)}</strong></span>
@@ -860,10 +866,7 @@ function statementValidationHtml(){
   }
   if(todo){
     const m=accountMonthSummary(todo,acc);
-    // Début + crédits − débits = fin calculée ; les espèces ne passent pas par la banque.
-    const bank=m.tx.filter(t=>t.payment!=="Espèces");
-    const credits=bank.filter(t=>t.type==="recette").reduce((s,t)=>s+(Number(t.amount)||0),0);
-    const debits=bank.filter(t=>t.type!=="recette").reduce((s,t)=>s+(Number(t.amount)||0),0);
+    const {credits,debits}=creditsDebits(m.tx);
     html+=`<div class="card form-card validation-card">
       <div class="section-title" style="margin-top:0"><h2>Valider le solde de fin · ${monthTitle(todo)}</h2></div>
       <div class="calc-lines">
@@ -884,15 +887,18 @@ function monthDetailView(key){
   const scope=currentMonthsScope();
   const s=monthSummary(key,scope);
   const global=scope==="global";
+  const cd=creditsDebits(s.tx);
   const views=[["date","Par date"],["paiement","Par paiement"],["categorie","Par catégorie"]];
   return `
     ${monthsTabsHtml(scope)}
     <button class="link-btn back-btn" data-jump="months">‹ Tous les mois</button>
     <section class="hero card">
       <small>${monthTitle(key)} · ${scopeLabel(scope)}</small>
-      <div class="month-hero">
-        <div><small>Solde début</small><div class="balance-sm">${balanceText(s.start)}</div></div>
-        <div><small>${s.validation?"Solde fin validé ✓":"Solde fin provisoire"}</small><div class="balance-sm">${balanceText(s.end)}</div></div>
+      <div class="calc-lines hero-calc">
+        <div><span>Solde de début</span><strong>${balanceText(s.start)}</strong></div>
+        <div><span>Crédits</span><strong class="hero-credit">+${euro(cd.credits)}</strong></div>
+        <div><span>Débits</span><strong class="hero-debit">-${euro(cd.debits)}</strong></div>
+        <div class="calc-total"><span>${s.validation?"Solde de fin validé ✓":"Solde de fin calculé"}</span><strong>${balanceText(s.end)}</strong></div>
       </div>
       ${global ? `<div class="month-parts">${s.parts.map(p=>`<div><small>${ACCOUNTS[p.acc]}</small><span>${balanceText(p.start)} → ${balanceText(p.end)}</span></div>`).join("")}</div>` : ""}
     </section>
@@ -1304,7 +1310,7 @@ function bind(){
   }
   document.querySelectorAll("[data-unlock-month]").forEach(b=>b.onclick=()=>{
     const key=b.dataset.unlockMonth;
-    if(!confirm(`Déverrouiller ${monthTitle(key)} sur le ${ACCOUNTS[currentAccount]} ?\n\nSon solde de fin redeviendra provisoire jusqu’à une nouvelle validation.`)) return;
+    if(!confirm(`Déverrouiller ${monthTitle(key)} sur le ${ACCOUNTS[currentAccount]} ?\n\nSon solde de fin redeviendra un solde calculé jusqu’à une nouvelle validation.`)) return;
     const acc={...((state.monthStatus||{})[currentAccount]||{})};
     delete acc[key];
     state.monthStatus={...(state.monthStatus||{}), [currentAccount]:acc};

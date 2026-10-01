@@ -436,9 +436,6 @@ textarea {
 .month-bal{text-align:right;min-width:0}
 .month-bal small{display:block;font-size:10px;color:var(--muted)}
 .month-bal span,.month-bal strong{font-size:14px;white-space:nowrap}
-.month-hero{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
-.month-hero small{color:#d7efef}
-.balance-sm{font-size:22px;font-weight:800;margin-top:4px}
 .back-btn{padding:4px 2px 12px;font-size:15px}
 @media(max-width:380px){.month-row{gap:8px}.month-bal span,.month-bal strong{font-size:13px}}
 
@@ -501,3 +498,12 @@ textarea {
 /* Relevé : détail du calcul du solde de fin */
 .calc-lines > div{display:flex;justify-content:space-between;padding:5px 0}
 .calc-lines .calc-total{border-top:1px solid var(--line);margin-top:4px;padding-top:9px}
+
+/* Détail du mois : calcul dans le bandeau vert foncé (couleurs éclaircies pour rester lisibles) */
+.hero-calc{margin-top:8px}
+.hero-calc span{color:#d7efef}
+.hero-calc strong{font-size:16px}
+.hero-calc .calc-total{border-top-color:rgba(255,255,255,.3)}
+.hero-calc .calc-total strong{font-size:22px}
+.hero-credit{color:#a9ccff}
+.hero-debit{color:#ffb4b4}
