@@ -326,6 +326,8 @@ let state = load();
 let currentView = "home";
 let transactionReturnView = "home";
 let lastMonthKey = null;
+// Position de la liste au moment d'ouvrir une opération, pour y revenir en la refermant.
+let returnScroll = null;
 
 // ---------- Comptes ----------
 // Une opération ou un récurrent sans compte (saisi avant les comptes) appartient au compte Mamie.
@@ -1195,6 +1197,11 @@ function render(view=currentView, options={}){
   if(view==="editTransaction") app.innerHTML=addView("depense",false,options.id);
   if(view==="recurringForm") app.innerHTML=recurringFormView(options.type,options.id||null,options.account||null);
   bind();
+  if(view==="editTransaction" || view==="add") window.scrollTo(0,0);
+  else if(returnScroll){
+    if(view===returnScroll.view) window.scrollTo(0,returnScroll.y);
+    returnScroll=null;
+  }
 }
 
 function bind(){
@@ -1311,6 +1318,7 @@ function bind(){
   document.querySelectorAll("[data-edit-tx]").forEach(row=>{
     const openEdit=()=>{
       transactionReturnView = currentView==="editTransaction" ? "home" : currentView;
+      returnScroll={view:transactionReturnView, y:window.scrollY};
       render("editTransaction",{id:row.dataset.editTx});
     };
     row.onclick=openEdit;
