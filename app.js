@@ -1503,11 +1503,15 @@ function bind(){
         months:variable?schedule.map(x=>x.month):[...document.querySelectorAll("#monthsBox input:checked")].map(x=>Number(x.value)),
         schedule,
         startMonth:/^\d{4}-\d{2}$/.test(document.getElementById("recurringStart").value) ? document.getElementById("recurringStart").value : localMonthKey(),
-        // Changer le compte ne déplace pas les opérations déjà créées : elles sont passées sur l'ancien compte.
         account:ACCOUNTS[document.getElementById("recurringAccount").value] ? document.getElementById("recurringAccount").value : currentAccount
       };
       if(idVal){
-        const i=state.recurring.findIndex(x=>String(x.id)===String(obj.id)); if(i>=0) state.recurring[i]=obj;
+        const i=state.recurring.findIndex(x=>String(x.id)===String(obj.id));
+        if(i>=0){
+          const oldAcc=accountOf(state.recurring[i]);
+          state.recurring[i]=obj;
+          if(oldAcc!==obj.account) moveRecurringOperations(obj, oldAcc);
+        }
       } else state.recurring.push(obj);
       // Ses opérations encore sans catégorie prennent celle du récurrent.
       state.transactions.forEach(t=>{ if(String(t.recurringId)===String(obj.id) && !t.category && obj.category && !txLocked(t)) t.category=obj.category; });
@@ -1625,6 +1629,26 @@ function bindRecoveryPanel(){
   document.querySelectorAll("[data-recover-storage]").forEach(b=>{
     b.onclick=()=>recoverStorage(Number(b.dataset.recoverStorage));
   });
+}
+
+// Changement de compte d'un récurrent : on propose de déplacer ses opérations déjà créées.
+// Celles d'un mois validé (sur l'un ou l'autre compte) ne bougent pas ; le pointage des
+// opérations déplacées est remis à zéro, il faudra les retrouver sur l'autre relevé.
+function moveRecurringOperations(r, oldAcc){
+  const ops=state.transactions.filter(t=>String(t.recurringId)===String(r.id) && accountOf(t)===oldAcc);
+  if(!ops.length) return;
+  const movable=ops.filter(t=>!txLocked(t) && !isMonthLocked(r.account,String(t.date).slice(0,7)));
+  const blocked=ops.length-movable.length;
+  const label=normalizeLabel(r.label);
+  if(!movable.length){
+    alert(`Les ${ops.length} opération(s) ${label} déjà créées sont dans des mois validés : elles restent sur le ${ACCOUNTS[oldAcc]}.`);
+    return;
+  }
+  const note=blocked ? `
+
+${blocked} opération(s) d’un mois validé resteront sur le ${ACCOUNTS[oldAcc]}.` : "";
+  if(!confirm(`Déplacer aussi les ${movable.length} opération(s) ${label} déjà créées vers le ${ACCOUNTS[r.account]} ?${note}`)) return;
+  movable.forEach(t=>{ t.account=r.account; t.pointed=false; });
 }
 
 // ---------- Récurrents : création automatique ----------
