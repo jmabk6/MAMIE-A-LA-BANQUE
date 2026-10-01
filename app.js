@@ -778,7 +778,7 @@ function detailFiltersHtml(tx){
       <option value="">Toutes les catégories</option>
       ${cats.map(c=>`<option ${c===detailCatFilter?"selected":""}>${escapeHtml(c)}</option>`).join("")}
     </select>
-    ${active ? `<div class="filter-total">${shown.length} opération(s) · total <strong class="${total<0?"red":"green"}">${total<0?"-":"+"}${euro(Math.abs(total))}</strong></div>` : ""}
+    ${active ? `<div class="filter-total">${shown.length} opération(s) · total <strong class="${total<0?"red":"blue"}">${total<0?"-":"+"}${euro(Math.abs(total))}</strong></div>` : ""}
   </div>`;
 }
 function balanceText(v){ return v===null ? "—" : euro(v); }
@@ -849,16 +849,16 @@ function monthDetailView(key){
       ${global ? `<div class="month-parts">${s.parts.map(p=>`<div><small>${ACCOUNTS[p.acc]}</small><span>${balanceText(p.start)} → ${balanceText(p.end)}</span></div>`).join("")}</div>` : ""}
     </section>
     <section class="grid">
-      <div class="stat"><small>Recettes</small><strong class="green">+${euro(s.recettes)}</strong></div>
+      <div class="stat"><small>Recettes</small><strong class="blue">+${euro(s.recettes)}</strong></div>
       <div class="stat"><small>Dépenses</small><strong class="red">-${euro(s.depenses)}</strong></div>
-      <div class="stat"><small>Prélèvements</small><strong class="blue">-${euro(s.prelevements)}</strong></div>
+      <div class="stat"><small>Prélèvements</small><strong class="red">-${euro(s.prelevements)}</strong></div>
     </section>
     ${s.virements?`<div class="notice" style="margin-top:12px">Virements entre comptes : <strong>${s.virements>0?"+":"-"}${euro(Math.abs(s.virements))}</strong> (ni recette ni dépense, compris dans le solde)</div>`:""}
     ${s.especes?`<div class="notice" style="margin-top:12px">Espèces dépensées : <strong>${euro(s.especes)}</strong> (hors compte, non comptées dans le solde)</div>`:""}
     ${global ? "" : validationCardHtml(s)}
     <section class="section-title"><h2>Opérations</h2></section>
     ${detailFiltersHtml(s.tx)}
-    ${renderTxList(filterTx(s.tx), global)}
+    <div class="month-ops">${renderTxList(filterTx(s.tx), global)}</div>
   `;
 }
 
