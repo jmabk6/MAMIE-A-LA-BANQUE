@@ -683,7 +683,7 @@ function monthValidation(acc, key){
 function isMonthLocked(acc, key){ return !!monthValidation(acc, key); }
 function txLocked(t, date=t.date){ return isMonthLocked(accountOf(t), String(date||"").slice(0,7)); }
 function lockedMessage(t, date=t.date){
-  return `${monthTitle(String(date).slice(0,7))} est validé et verrouillé sur le ${ACCOUNTS[accountOf(t)]}.\nDéverrouille-le d’abord dans l’écran Mois pour modifier ses opérations.`;
+  return `${monthTitle(String(date).slice(0,7))} est validé et verrouillé sur le ${ACCOUNTS[accountOf(t)]}.\nDéverrouille-le d’abord dans l’onglet Relevé pour modifier ses opérations.`;
 }
 function lastValidatedBefore(acc, key){
   const months=Object.keys((state.monthStatus||{})[acc]||{}).filter(k=>k<key && isMonthLocked(acc,k)).sort();
@@ -711,20 +711,9 @@ function monthStartBalance(key, acc){
 function accountMonthSummary(key, acc){
   const tx=datedAccountTx(acc).filter(t=>t.date.slice(0,7)===key);
   const start=monthStartBalance(key,acc);
-  // Un virement entre comptes n'est ni une recette ni une dépense : il est compté à part.
-  const bank=t=>t.payment!=="Espèces" && !t.transferId;
-  const sum=f=>tx.filter(f).reduce((s,t)=>s+(Number(t.amount)||0),0);
   const validation=monthValidation(acc,key);
-  return {
-    acc, tx, start, validation,
-    computedEnd: start===null ? null : start+tx.reduce((s,t)=>s+bankEffect(t),0),
-    end: validation ? validation.endBalance : (start===null ? null : start+tx.reduce((s,t)=>s+bankEffect(t),0)),
-    recettes:sum(t=>bank(t)&&t.type==="recette"),
-    depenses:sum(t=>bank(t)&&t.type==="depense"),
-    prelevements:sum(t=>bank(t)&&t.type==="prelevement"),
-    especes:sum(t=>t.payment==="Espèces"&&t.type!=="recette"),
-    virements:tx.filter(t=>t.transferId).reduce((s,t)=>s+bankEffect(t),0)
-  };
+  const computedEnd=start===null ? null : start+tx.reduce((s,t)=>s+bankEffect(t),0);
+  return {acc, tx, start, validation, computedEnd, end: validation ? validation.endBalance : computedEnd};
 }
 function monthSummary(key, scope){
   const parts=scopeAccounts(scope).map(acc=>accountMonthSummary(key,acc));
@@ -737,34 +726,43 @@ function monthSummary(key, scope){
     validation: parts.every(p=>p.validation) ? parts[0].validation : null,
     tx:parts.flatMap(p=>p.tx).filter(t=>!t.transferId),
     start: missing ? null : add("start"),
-    end: missing ? null : add("end"),
-    recettes:add("recettes"), depenses:add("depenses"), prelevements:add("prelevements"),
-    especes:add("especes"), virements:0
+    end: missing ? null : add("end")
   };
 }
-let detailPayFilter="";   // "" | "Carte bancaire" | "Espèces"
-let detailCatFilter="";   // "" | nom de catégorie | NO_CATEGORY
-function filterTx(list){
-  return list.filter(t=>
-    (!detailPayFilter || t.payment===detailPayFilter) &&
-    (!detailCatFilter || (t.transferId ? false : (t.category||NO_CATEGORY)===detailCatFilter)));
+let detailView="date";      // "date" | "paiement" | "categorie"
+const openGroups=new Set(); // groupes dépliés, ex. "paiement:Espèces"
+const TRANSFER_GROUP="Virements entre comptes";
+function netAmount(list){ return list.reduce((s,t)=>s+(t.type==="recette"?1:-1)*(Number(t.amount)||0),0); }
+function detailGroups(tx, view){
+  const keyOf = view==="paiement"
+    ? t=>t.payment||"Autre"
+    : t=>t.transferId ? TRANSFER_GROUP : (t.category||NO_CATEGORY);
+  const order = view==="paiement"
+    ? ["Carte bancaire","Prélèvement","Virement","Espèces","Chèque"]
+    : [...categories(), NO_CATEGORY, TRANSFER_GROUP];
+  const names=[...new Set(tx.map(keyOf))].sort((a,b)=>{
+    const ia=order.indexOf(a), ib=order.indexOf(b);
+    return (ia<0?999:ia)-(ib<0?999:ib) || a.localeCompare(b);
+  });
+  return names.map(name=>({name, list:tx.filter(t=>keyOf(t)===name)}));
 }
-function detailFiltersHtml(tx){
-  const cats=[...new Set([...categories(), ...tx.filter(t=>!t.transferId).map(t=>t.category||NO_CATEGORY)])];
-  const pays=[["","Tous"],["Carte bancaire","CB"],["Espèces","Espèces"]];
-  const shown=filterTx(tx);
-  const total=shown.reduce((s,t)=>s+(t.type==="recette"?1:-1)*(Number(t.amount)||0),0);
-  const active=detailPayFilter||detailCatFilter;
-  return `<div class="card detail-filters">
-    <div class="segmented pay-filter">
-      ${pays.map(([v,l])=>`<button type="button" data-pay-filter="${escapeHtml(v)}" class="${v===detailPayFilter?"active":""}">${l}</button>`).join("")}
-    </div>
-    <select id="catFilter">
-      <option value="">Toutes les catégories</option>
-      ${cats.map(c=>`<option ${c===detailCatFilter?"selected":""}>${escapeHtml(c)}</option>`).join("")}
-    </select>
-    ${active ? `<div class="filter-total">${shown.length} opération(s) · total <strong class="${total<0?"red":"blue"}">${total<0?"-":"+"}${euro(Math.abs(total))}</strong></div>` : ""}
-  </div>`;
+function detailContentHtml(tx, global){
+  if(detailView==="date") return renderTxList(tx, global);
+  const groups=detailGroups(tx, detailView);
+  if(!groups.length) return '<div class="empty">Aucune opération</div>';
+  return groups.map(g=>{
+    const id=`${detailView}:${g.name}`;
+    const open=openGroups.has(id);
+    const total=netAmount(g.list);
+    return `<div class="card detail-group">
+      <button type="button" class="group-head" data-toggle-group="${escapeHtml(id)}" aria-expanded="${open}">
+        <span class="group-sign">${open?"−":"+"}</span>
+        <span class="group-name">${escapeHtml(g.name)} <small>(${g.list.length})</small></span>
+        <strong class="${total<0?"red":"blue"}">${signedEuro(total)}</strong>
+      </button>
+      ${open ? renderTxList(g.list, global) : ""}
+    </div>`;
+  }).join("");
 }
 function balanceText(v){ return v===null ? "—" : euro(v); }
 function scopeLabel(scope){ return scope==="global" ? "Global" : ACCOUNTS[scope]; }
@@ -825,7 +823,7 @@ function monthsView(){
             <div class="month-bal"><small>Début</small><span class="${signClass(s.start)}">${euro(s.start)}</span></div>
             <div class="month-bal"><small>${s.validation?"Fin ✓":"Fin provisoire"}</small><strong class="${s.validation?"":"provisional"} ${signClass(s.end)}">${euro(s.end)}</strong></div>
             <div class="month-sums">
-              <span>Solde du mois <strong class="${signClass(net)}">${signedEuro(net)}</strong></span>
+              <span>Solde du mois <strong class="${net<0?"red":"green"}">${signedEuro(net)}</strong></span>
               <span>Cumulé <strong class="${cumul<0?"red":"cumul"}">${signedEuro(cumul)}</strong></span>
             </div>
           </div>`;
@@ -834,29 +832,42 @@ function monthsView(){
   `;
 }
 
-function validationCardHtml(s){
-  if(s.validation){
-    const when=new Date(s.validation.validatedAt).toLocaleDateString("fr-FR");
-    return `<div class="card validation-card validated">
-      <div><strong>Solde de fin validé ✓</strong> le ${when} : ${euro(s.validation.endBalance)}</div>
-      <div class="meta">Le mois est verrouillé : ses opérations ne peuvent plus être ajoutées, modifiées ni supprimées.</div>
-      <button class="secondary-btn" id="unlockMonthBtn" style="margin-top:10px">Déverrouiller le mois</button>
+// Validation du solde de fin, dans Relevé, pour le compte choisi : le mois à valider est le
+// premier mois non validé ; seul le dernier mois validé peut être déverrouillé.
+function statementValidationHtml(){
+  const acc=currentAccount;
+  if(!openingBalance(acc)) return `<div class="notice orange">Indique le solde de départ du ${ACCOUNTS[acc]} dans Réglages pour pouvoir valider un solde de fin.</div>`;
+  const months=visibleMonths(acc);
+  const validated=months.filter(k=>isMonthLocked(acc,k));
+  const last=validated[validated.length-1];
+  const todo=months.find(k=>!isMonthLocked(acc,k));
+  let html="";
+  if(last){
+    const v=monthValidation(acc,last);
+    html+=`<div class="card validation-card validated">
+      <div><strong>${monthTitle(last)} validé ✓</strong> le ${new Date(v.validatedAt).toLocaleDateString("fr-FR")} : ${euro(v.endBalance)}</div>
+      <div class="meta">Ce mois est verrouillé : ses opérations ne peuvent plus être ajoutées, modifiées ni supprimées.</div>
+      <button class="secondary-btn" data-unlock-month="${last}" style="margin-top:10px">Déverrouiller ${monthTitle(last)}</button>
     </div>`;
   }
-  if(s.computedEnd===null) return "";
-  return `<div class="card form-card validation-card">
-    <div class="section-title" style="margin-top:0"><h2>Valider le solde de fin</h2></div>
-    <div>Solde de fin calculé : <strong>${euro(s.computedEnd)}</strong></div>
-    <label>Solde de fin lu sur le relevé<input id="statementEnd" type="number" inputmode="decimal" step="0.01" placeholder="0,00"></label>
-    <div id="validationGap" class="meta">Tape le solde du relevé pour voir l’écart.</div>
-    <button class="primary" id="validateMonthBtn" type="button" disabled style="margin-top:10px">Valider le solde de fin</button>
-  </div>`;
+  if(todo){
+    const computed=accountMonthSummary(todo,acc).computedEnd;
+    html+=`<div class="card form-card validation-card">
+      <div class="section-title" style="margin-top:0"><h2>Valider le solde de fin · ${monthTitle(todo)}</h2></div>
+      <div>Solde de fin calculé : <strong>${euro(computed)}</strong></div>
+      <label>Solde de fin lu sur le relevé<input id="statementEnd" data-month="${todo}" type="number" inputmode="decimal" step="0.01" placeholder="0,00"></label>
+      <div id="validationGap" class="meta">Tape le solde du relevé pour voir l’écart.</div>
+      <button class="primary" id="validateMonthBtn" type="button" disabled style="margin-top:10px">Valider le solde de fin</button>
+    </div>`;
+  }
+  return html;
 }
 
 function monthDetailView(key){
   const scope=currentMonthsScope();
   const s=monthSummary(key,scope);
   const global=scope==="global";
+  const views=[["date","Par date"],["paiement","Par paiement"],["categorie","Par catégorie"]];
   return `
     ${monthsTabsHtml(scope)}
     <button class="link-btn back-btn" data-jump="months">‹ Tous les mois</button>
@@ -868,17 +879,10 @@ function monthDetailView(key){
       </div>
       ${global ? `<div class="month-parts">${s.parts.map(p=>`<div><small>${ACCOUNTS[p.acc]}</small><span>${balanceText(p.start)} → ${balanceText(p.end)}</span></div>`).join("")}</div>` : ""}
     </section>
-    <section class="grid">
-      <div class="stat"><small>Recettes</small><strong class="blue">+${euro(s.recettes)}</strong></div>
-      <div class="stat"><small>Dépenses</small><strong class="red">-${euro(s.depenses)}</strong></div>
-      <div class="stat"><small>Prélèvements</small><strong class="red">-${euro(s.prelevements)}</strong></div>
-    </section>
-    ${s.virements?`<div class="notice" style="margin-top:12px">Virements entre comptes : <strong>${s.virements>0?"+":"-"}${euro(Math.abs(s.virements))}</strong> (ni recette ni dépense, compris dans le solde)</div>`:""}
-    ${s.especes?`<div class="notice" style="margin-top:12px">Espèces dépensées : <strong>${euro(s.especes)}</strong> (hors compte, non comptées dans le solde)</div>`:""}
-    ${global ? "" : validationCardHtml(s)}
-    <section class="section-title"><h2>Opérations</h2></section>
-    ${detailFiltersHtml(s.tx)}
-    ${renderTxList(filterTx(s.tx), global)}
+    <div class="segmented detail-views">
+      ${views.map(([v,l])=>`<button type="button" data-detail-view="${v}" class="${v===detailView?"active":""}">${l}</button>`).join("")}
+    </div>
+    ${detailContentHtml(s.tx, global)}
   `;
 }
 
@@ -897,6 +901,7 @@ function statementView(){
         </label>`).join("") : '<div class="empty">Tout est pointé ✓</div>'}
     </div>
     <button class="fab" id="statementAddBtn">+ Ajouter une opération du relevé</button>
+    ${statementValidationHtml()}
   `;
 }
 
@@ -1208,7 +1213,6 @@ function bind(){
     state.categories=list.map(c=>c===old?name:c);
     state.transactions.forEach(t=>{ if(t.category===old) t.category=name; });
     state.recurring.forEach(r=>{ if(r.category===old) r.category=name; });
-    if(detailCatFilter===old) detailCatFilter=name;
     save("avant-renommage-categorie"); render("settings");
   });
   document.querySelectorAll("[data-delete-category]").forEach(b=>b.onclick=()=>{
@@ -1218,16 +1222,18 @@ function bind(){
     state.categories=list.filter(c=>c!==old);
     state.transactions.forEach(t=>{ if(t.category===old) delete t.category; });
     state.recurring.forEach(r=>{ if(r.category===old) delete r.category; });
-    if(detailCatFilter===old) detailCatFilter="";
     save("avant-suppression-categorie"); render("settings");
   });
-  document.querySelectorAll("[data-pay-filter]").forEach(b=>b.onclick=()=>{ detailPayFilter=b.dataset.payFilter; render("monthDetail"); });
-  const catFilter=document.getElementById("catFilter");
-  if(catFilter) catFilter.onchange=()=>{ detailCatFilter=catFilter.value; render("monthDetail"); };
+  document.querySelectorAll("[data-detail-view]").forEach(b=>b.onclick=()=>{ detailView=b.dataset.detailView; render("monthDetail"); });
+  document.querySelectorAll("[data-toggle-group]").forEach(b=>b.onclick=()=>{
+    const id=b.dataset.toggleGroup;
+    if(openGroups.has(id)) openGroups.delete(id); else openGroups.add(id);
+    render("monthDetail");
+  });
   const statementEnd=document.getElementById("statementEnd");
   if(statementEnd){
-    const key=lastMonthKey || localMonthKey();
-    const computed=monthSummary(key,currentAccount).computedEnd;
+    const key=statementEnd.dataset.month;
+    const computed=accountMonthSummary(key,currentAccount).computedEnd;
     const btn=document.getElementById("validateMonthBtn");
     const gapEl=document.getElementById("validationGap");
     const cents=v=>Math.round(v*100);
@@ -1246,19 +1252,18 @@ function bind(){
       state.monthStatus={...(state.monthStatus||{})};
       state.monthStatus[currentAccount]={...(state.monthStatus[currentAccount]||{}), [key]:{validated:true, endBalance:cents(v)/100, validatedAt:new Date().toISOString()}};
       save("avant-validation-mois");
-      render("monthDetail");
+      render("statement");
     };
   }
-  const unlockBtn=document.getElementById("unlockMonthBtn");
-  if(unlockBtn) unlockBtn.onclick=()=>{
-    const key=lastMonthKey || localMonthKey();
+  document.querySelectorAll("[data-unlock-month]").forEach(b=>b.onclick=()=>{
+    const key=b.dataset.unlockMonth;
     if(!confirm(`Déverrouiller ${monthTitle(key)} sur le ${ACCOUNTS[currentAccount]} ?\n\nSon solde de fin redeviendra provisoire jusqu’à une nouvelle validation.`)) return;
     const acc={...((state.monthStatus||{})[currentAccount]||{})};
     delete acc[key];
     state.monthStatus={...(state.monthStatus||{}), [currentAccount]:acc};
     save("avant-deverrouillage-mois");
-    render("monthDetail");
-  };
+    render("statement");
+  });
   document.querySelectorAll("[data-open-month]").forEach(row=>{
     const open=()=>render("monthDetail",{month:row.dataset.openMonth});
     row.onclick=open;

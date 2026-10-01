@@ -454,11 +454,7 @@ textarea {
 .recurring-account-card .section-title{margin:14px 0 6px}
 .recurring-account-card .section-title h3{font-size:15px;margin:0}
 
-/* Catégories et filtres du détail du mois */
-.detail-filters{padding:12px}
-.detail-filters .pay-filter{grid-template-columns:repeat(3,1fr);margin-bottom:10px}
-.detail-filters select{width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:16px}
-.filter-total{margin-top:10px;font-size:14px}
+/* Catégories */
 .category-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
 .category-item:last-of-type{border-bottom:0}
 #categoryField[hidden]{display:none}
@@ -476,3 +472,11 @@ textarea {
 .month-sums strong{font-size:13px;margin-left:4px}
 .month-sums .cumul{color:var(--brand)}
 .month-bal strong.provisional{font-weight:600;font-style:italic}
+
+/* Détail du mois : par date, par paiement, par catégorie */
+.detail-views{grid-template-columns:repeat(3,1fr);margin:12px 0}
+.detail-group{padding:0 14px;margin-bottom:10px}
+.group-head{width:100%;display:grid;grid-template-columns:24px 1fr auto;align-items:center;gap:8px;padding:14px 0;border:0;background:none;text-align:left;font-size:15px;color:var(--ink)}
+.group-sign{font-size:20px;font-weight:800;color:var(--brand);text-align:center}
+.group-name small{color:var(--muted);font-weight:400}
+.detail-group .card{box-shadow:none;padding:0;margin:0;border-top:1px solid var(--line)}
