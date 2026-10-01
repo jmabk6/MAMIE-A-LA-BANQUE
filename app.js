@@ -378,10 +378,12 @@ function euro(n){ return new Intl.NumberFormat("fr-FR",{style:"currency",currenc
 function fmtDate(d){ return new Date(d+"T12:00:00").toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"}); }
 // Partout : crédits en bleu, débits (dépenses et prélèvements) en rouge.
 function typeClass(tx){ return tx.type==="recette"?"blue":"red"; }
+// « Non prévu » (ajouté au pointage) reste affiché à vie, à côté du statut de pointage.
 function statusBadge(tx){
-  if(tx.unknown) return '<span class="badge orange">NOUVEAU</span>';
-  if(tx.pointed) return '<span class="badge green">POINTÉ</span>';
-  return '<span class="badge gray">À VÉRIFIER</span>';
+  const unplanned=tx.unknown ? '<span class="badge orange">NON PRÉVU</span>' : "";
+  if(tx.pointed) return unplanned+'<span class="badge green">POINTÉ</span>';
+  if(tx.payment==="Espèces") return unplanned+'<span class="badge gray">ESPÈCES</span>';
+  return unplanned+'<span class="badge gray">À VÉRIFIER</span>';
 }
 function sortedTx(list=state.transactions){ return [...list].sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id); }
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
@@ -582,7 +584,7 @@ function expensesView(){
   `;
 }
 
-function addView(defaultType="depense", unknown=false, editId=null){
+function addView(defaultType="depense", unknown=false, editId=null, defaultDate=null){
   const existing = editId!==null
     ? state.transactions.find(x=>String(x.id)===String(editId))
     : null;
@@ -590,7 +592,7 @@ function addView(defaultType="depense", unknown=false, editId=null){
   const tx = existing || {
     id:"",
     type:defaultType,
-    date:new Date().toISOString().slice(0,10),
+    date:defaultDate || new Date().toISOString().slice(0,10),
     label:"",
     amount:"",
     payment:defaultType==="prelevement" ? "Prélèvement" : defaultType==="recette" ? "Virement" : "Carte bancaire",
@@ -638,7 +640,7 @@ function addView(defaultType="depense", unknown=false, editId=null){
 
       <label class="check-row">
         <input id="unknown" type="checkbox" ${tx.unknown ? "checked" : ""} />
-        Ajouté depuis le relevé / inconnu
+        Non prévu (ajouté au pointage du relevé)
       </label>
 
       ${existing && txLocked(existing) ? `<div class="notice orange">${escapeHtml(lockedMessage(existing))}</div>` : ""}
@@ -886,21 +888,32 @@ function monthDetailView(key){
   `;
 }
 
+// Le Relevé travaille sur le premier mois non validé du compte choisi.
+function statementMonth(acc=currentAccount){
+  if(!openingBalance(acc)) return null;
+  return visibleMonths(acc).find(k=>!isMonthLocked(acc,k)) || null;
+}
 function statementView(){
-  const pending = sortedTx(accountTx().filter(x=>!x.pointed));
-  const unknown = pending.filter(x=>x.unknown).length;
+  const key=statementMonth();
+  if(!key) return `<div class="notice orange">Indique le solde de départ du ${ACCOUNTS[currentAccount]} dans Réglages pour commencer le pointage.</div>${statementValidationHtml()}`;
+  // Les espèces ne passent pas par la banque : elles ne sont pas sur le relevé.
+  const list=sortedTx(datedAccountTx(currentAccount).filter(t=>t.date.slice(0,7)===key && t.payment!=="Espèces"));
+  const pointed=list.filter(t=>t.pointed).length;
   return `
-    <div class="notice">Coche les opérations présentes sur le relevé bancaire.</div>
-    ${unknown ? `<div class="notice orange">${unknown} nouvelle(s) opération(s) à examiner.</div>`:""}
+    <section class="statement-head card">
+      <small>Relevé · ${ACCOUNTS[currentAccount]}</small>
+      <h2>${monthTitle(key)}</h2>
+      <div class="meta">${pointed} pointée(s) sur ${list.length} · coche les opérations présentes sur le relevé bancaire</div>
+    </section>
     <div class="card">
-      ${pending.length ? pending.map(tx=>`
+      ${list.length ? list.map(tx=>`
         <label class="reconcile-item">
-          <input type="checkbox" data-point="${tx.id}">
-          <div><strong>${escapeHtml(tx.label)} ${statusBadge(tx)}</strong><div class="meta">${fmtDate(tx.date)} · ${escapeHtml(tx.payment)}</div></div>
-          <div class="amount ${typeClass(tx)}">${euro(tx.amount)}</div>
-        </label>`).join("") : '<div class="empty">Tout est pointé ✓</div>'}
+          <input type="checkbox" data-point="${tx.id}" ${tx.pointed?"checked":""}>
+          <div><strong>${escapeHtml(tx.label)} ${statusBadge(tx)}</strong><div class="meta">${fmtDate(tx.date)} · ${escapeHtml(tx.payment)}${tx.transferId?"":` · ${escapeHtml(tx.category||NO_CATEGORY)}`}</div></div>
+          <div class="amount ${typeClass(tx)}">${tx.type==="recette"?"+":"-"}${euro(tx.amount)}</div>
+        </label>`).join("") : '<div class="empty">Aucune opération ce mois-ci</div>'}
     </div>
-    <button class="fab" id="statementAddBtn">+ Ajouter une opération du relevé</button>
+    <button class="fab" id="statementAddBtn" data-month="${key}">+ Ajouter une opération non prévue</button>
     ${statementValidationHtml()}
   `;
 }
@@ -1178,7 +1191,7 @@ function render(view=currentView, options={}){
   if(view==="statement") app.innerHTML=statementView();
   if(view==="search") app.innerHTML=searchView();
   if(view==="settings") app.innerHTML=settingsView();
-  if(view==="add") app.innerHTML=addView(options.type||"depense",!!options.unknown,null);
+  if(view==="add") app.innerHTML=addView(options.type||"depense",!!options.unknown,null,options.date||null);
   if(view==="editTransaction") app.innerHTML=addView("depense",false,options.id);
   if(view==="recurringForm") app.innerHTML=recurringFormView(options.type,options.id||null,options.account||null);
   bind();
@@ -1286,7 +1299,14 @@ function bind(){
   const add=document.getElementById("addBtn");
   if(add) add.onclick=()=>{ transactionReturnView="home"; render("add",{type:"depense"}); };
   const stAdd=document.getElementById("statementAddBtn");
-  if(stAdd) stAdd.onclick=()=>{ transactionReturnView="statement"; render("add",{type:"prelevement",unknown:true}); };
+  if(stAdd) stAdd.onclick=()=>{
+    // Daté d'aujourd'hui si on est dans le mois du relevé, sinon du dernier jour de ce mois.
+    const key=stAdd.dataset.month, [y,m]=key.split("-").map(Number);
+    const today=new Date(), todayIso=`${localMonthKey(today)}-${String(today.getDate()).padStart(2,"0")}`;
+    const date=todayIso.startsWith(key) ? todayIso : `${key}-${String(new Date(y,m,0).getDate()).padStart(2,"0")}`;
+    transactionReturnView="statement";
+    render("add",{type:"prelevement",unknown:true,date});
+  };
 
   document.querySelectorAll("[data-edit-tx]").forEach(row=>{
     const openEdit=()=>{
@@ -1358,7 +1378,7 @@ function bind(){
     cb.onchange=()=>{
       const id=String(cb.dataset.point);
       const tx=state.transactions.find(x=>String(x.id)===id);
-      if(tx){ tx.pointed=true; save(); render("statement"); }
+      if(tx){ tx.pointed=cb.checked; save(cb.checked?"avant-pointage":"avant-depointage"); render("statement"); }
     };
   });
 

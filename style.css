@@ -480,3 +480,8 @@ textarea {
 .group-sign{font-size:20px;font-weight:800;color:var(--brand);text-align:center}
 .group-name small{color:var(--muted);font-weight:400}
 .detail-group .card{box-shadow:none;padding:0;margin:0;border-top:1px solid var(--line)}
+
+/* Relevé : en-tête du mois pointé */
+.statement-head small{color:var(--muted);font-weight:700}
+.statement-head h2{margin:2px 0 4px;font-size:22px;color:var(--brand)}
+.badge + .badge{margin-left:4px}
