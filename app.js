@@ -899,25 +899,36 @@ function statementMonth(acc=currentAccount){
   if(!openingBalance(acc)) return null;
   return visibleMonths(acc).find(k=>!isMonthLocked(acc,k)) || null;
 }
+let statementFilter="averifier"; // "averifier" | "pointe" | "nonprevu" | "tout"
+const STATEMENT_FILTERS=[
+  ["averifier","À vérifier",t=>!t.pointed],
+  ["pointe","Pointé",t=>t.pointed],
+  ["nonprevu","Non prévu",t=>t.unknown],
+  ["tout","Tout",()=>true]
+];
 function statementView(){
   const key=statementMonth();
   if(!key) return `<div class="notice orange">Indique le solde de départ du ${ACCOUNTS[currentAccount]} dans Réglages pour commencer le pointage.</div>${statementValidationHtml()}`;
   // Les espèces ne passent pas par la banque : elles ne sont pas sur le relevé.
   const list=sortedTx(datedAccountTx(currentAccount).filter(t=>t.date.slice(0,7)===key && t.payment!=="Espèces"));
   const pointed=list.filter(t=>t.pointed).length;
+  const shown=list.filter((STATEMENT_FILTERS.find(([k])=>k===statementFilter)||STATEMENT_FILTERS[0])[2]);
   return `
     <section class="statement-head card">
       <small>Relevé · ${ACCOUNTS[currentAccount]}</small>
       <h2>${monthTitle(key)}</h2>
       <div class="meta">${pointed} pointée(s) sur ${list.length} · coche les opérations présentes sur le relevé bancaire</div>
     </section>
+    <div class="segmented statement-filters">
+      ${STATEMENT_FILTERS.map(([k,l,f])=>`<button type="button" data-statement-filter="${k}" class="${k===statementFilter?"active":""}">${l} (${list.filter(f).length})</button>`).join("")}
+    </div>
     <div class="card">
-      ${list.length ? list.map(tx=>`
+      ${shown.length ? shown.map(tx=>`
         <label class="reconcile-item">
           <input type="checkbox" data-point="${tx.id}" ${tx.pointed?"checked":""}>
           <div><strong>${escapeHtml(tx.label)} ${statusBadge(tx)}</strong><div class="meta">${fmtDate(tx.date)} · ${escapeHtml(tx.payment)}${tx.transferId?"":` · ${escapeHtml(tx.category||NO_CATEGORY)}`}</div></div>
           <div class="amount ${typeClass(tx)}">${tx.type==="recette"?"+":"-"}${euro(tx.amount)}</div>
-        </label>`).join("") : '<div class="empty">Aucune opération ce mois-ci</div>'}
+        </label>`).join("") : `<div class="empty">${list.length ? "Aucune opération dans cet onglet" : "Aucune opération ce mois-ci"}</div>`}
     </div>
     <button class="fab" id="statementAddBtn" data-month="${key}">+ Ajouter une opération non prévue</button>
     ${statementValidationHtml()}
@@ -1248,6 +1259,7 @@ function bind(){
     state.recurring.forEach(r=>{ if(r.category===old) delete r.category; });
     save("avant-suppression-categorie"); render("settings");
   });
+  document.querySelectorAll("[data-statement-filter]").forEach(b=>b.onclick=()=>{ statementFilter=b.dataset.statementFilter; render("statement"); });
   document.querySelectorAll("[data-detail-view]").forEach(b=>b.onclick=()=>{ detailView=b.dataset.detailView; render("monthDetail"); });
   document.querySelectorAll("[data-toggle-group]").forEach(b=>b.onclick=()=>{
     const id=b.dataset.toggleGroup;
