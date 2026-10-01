@@ -859,10 +859,19 @@ function statementValidationHtml(){
     </div>`;
   }
   if(todo){
-    const computed=accountMonthSummary(todo,acc).computedEnd;
+    const m=accountMonthSummary(todo,acc);
+    // Début + crédits − débits = fin calculée ; les espèces ne passent pas par la banque.
+    const bank=m.tx.filter(t=>t.payment!=="Espèces");
+    const credits=bank.filter(t=>t.type==="recette").reduce((s,t)=>s+(Number(t.amount)||0),0);
+    const debits=bank.filter(t=>t.type!=="recette").reduce((s,t)=>s+(Number(t.amount)||0),0);
     html+=`<div class="card form-card validation-card">
       <div class="section-title" style="margin-top:0"><h2>Valider le solde de fin · ${monthTitle(todo)}</h2></div>
-      <div>Solde de fin calculé : <strong>${euro(computed)}</strong></div>
+      <div class="calc-lines">
+        <div><span>Solde de début</span><strong>${euro(m.start)}</strong></div>
+        <div><span>Crédits</span><strong class="blue">+${euro(credits)}</strong></div>
+        <div><span>Débits</span><strong class="red">-${euro(debits)}</strong></div>
+        <div class="calc-total"><span>Solde de fin calculé</span><strong>${euro(m.computedEnd)}</strong></div>
+      </div>
       <label>Solde de fin lu sur le relevé<input id="statementEnd" data-month="${todo}" type="number" inputmode="decimal" step="0.01" placeholder="0,00"></label>
       <div id="validationGap" class="meta">Tape le solde du relevé pour voir l’écart.</div>
       <button class="primary" id="validateMonthBtn" type="button" disabled style="margin-top:10px">Valider le solde de fin</button>

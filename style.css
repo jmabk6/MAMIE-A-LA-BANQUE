@@ -497,3 +497,7 @@ textarea {
 .point-zone{display:flex;align-items:center;justify-content:center;align-self:stretch;min-height:56px;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .point-zone input{width:22px;height:22px;margin:0}
 .reconcile-open{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:13px 0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+
+/* Relevé : détail du calcul du solde de fin */
+.calc-lines > div{display:flex;justify-content:space-between;padding:5px 0}
+.calc-lines .calc-total{border-top:1px solid var(--line);margin-top:4px;padding-top:9px}
