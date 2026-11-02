@@ -547,3 +547,20 @@ textarea {
 .settings-zone .form-card.validation-card{padding:0}
 .validation-subtitle{font-size:16px;margin:4px 0 8px;color:var(--brand)}
 .app-version{text-align:right;font-size:11px;color:var(--muted);margin:14px 4px 4px}
+
+/* Accueil, Mois, Dépenses : mêmes zones que Réglages */
+.zone-hero .balance{font-size:34px;font-weight:800;color:var(--brand);margin:2px 0 4px}
+.zone-hero .hero-calc span{color:var(--muted)}
+.zone-hero .hero-credit{color:var(--blue)}
+.zone-hero .hero-debit{color:var(--red)}
+.zone-hero .hero-calc .calc-total{border-top-color:var(--line)}
+.zone-hero .month-parts{border-top-color:var(--line)}
+.zone-hero .month-parts small{color:var(--muted)}
+.zone-hero .fab{margin:12px 0 0}
+.zone-list > .card{box-shadow:none;padding:0;margin:0;border-radius:0}
+.zone-list .detail-group{box-shadow:none;padding:0;margin:0;border-radius:0;border-bottom:1px solid var(--line)}
+.zone-list .detail-group:last-child{border-bottom:0}
+.zone-list .fab{margin:0 0 8px}
+.zone-list .detail-views{margin:0 0 8px}
+.zone-list .empty{padding:16px 10px}
+.zone-more{display:block;margin:8px 0 0 auto}

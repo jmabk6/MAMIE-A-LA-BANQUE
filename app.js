@@ -1,7 +1,7 @@
 const STORAGE_KEY = "mamie-banque-v2";
 // Affichée en bas de l'Accueil : à changer à chaque mise en ligne (avec le ?v= d'index.html),
 // pour que JM voie si l'iPhone a bien la nouvelle version.
-const APP_VERSION = "Version du 02/11 à 22 h 14";
+const APP_VERSION = "Version du 02/11 à 22 h 31";
 const STORAGE_PREFIX = "mamie-banque";
 const BACKUP_PREFIX = "mamie-banque-backup-";
 
@@ -602,8 +602,9 @@ function homeView(){
   const lastExpenses=sortedTx(monthTx.filter(t=>t.type==="depense")).slice(0,5);
 
   return `
-    <section class="hero card">
-      <small>Reste à dépenser · ${MONTH_FULL[m]} ${ctx.y} · les deux comptes</small>
+    <section class="card settings-zone zone-hero">
+      <h2 class="settings-zone-title">Reste à dépenser · ${MONTH_FULL[m]} ${ctx.y}</h2>
+      <div class="meta">Les deux comptes</div>
       <div class="balance">${euro(available)}</div>
       <div class="calc-lines hero-calc">
         <div><span>Recettes du mois</span><strong class="hero-credit">+${euro(rec)}</strong></div>
@@ -611,13 +612,18 @@ function homeView(){
         <div><span>Mises de côté (gros prélèvements)</span><strong class="hero-debit">-${euro(provisions)}</strong></div>
         <div><span>Dépenses du mois</span><strong class="hero-debit">-${euro(dep)}</strong></div>
       </div>
+      ${bigDues.length ? `<div class="notice big-dues">Échéances payées ce mois avec les mises de côté : <strong>${euro(bigDuesTotal)}</strong><div class="meta">${bigDues.map(x=>escapeHtml(x.label)).join(", ")}</div></div>` : ""}
+      <button class="fab" id="addBtn" data-default-account="mamie">+ Ajouter une dépense</button>
     </section>
-    ${bigDues.length ? `<div class="notice big-dues">Échéances payées ce mois avec les mises de côté : <strong>${euro(bigDuesTotal)}</strong><div class="meta">${bigDues.map(x=>escapeHtml(x.label)).join(", ")}</div></div>` : ""}
-    <button class="fab" id="addBtn" data-default-account="mamie">+ Ajouter une dépense</button>
-    <section class="section-title"><h2>À venir ce mois-ci</h2></section>
-    ${upcoming.length ? renderTxList(upcoming, true, false) : '<div class="empty">Plus rien de prévu ce mois-ci</div>'}
-    <section class="section-title"><h2>Dernières dépenses</h2><button class="link-btn" id="seeMonthBtn">Voir tout le mois</button></section>
-    ${renderTxList(lastExpenses, true)}
+    <section class="card settings-zone zone-list">
+      <h2 class="settings-zone-title">À venir ce mois-ci</h2>
+      ${upcoming.length ? renderTxList(upcoming, true, false) : '<div class="empty">Plus rien de prévu ce mois-ci</div>'}
+    </section>
+    <section class="card settings-zone zone-list">
+      <h2 class="settings-zone-title">Dernières dépenses</h2>
+      ${renderTxList(lastExpenses, true)}
+      <button class="link-btn zone-more" id="seeMonthBtn">Voir tout le mois ›</button>
+    </section>
     <div class="app-version">${APP_VERSION}</div>
   `;
 }
@@ -625,9 +631,11 @@ function homeView(){
 function expensesView(){
   const {monthTx}=currentMonthContext();
   return `
-    <section class="section-title"><h2>Dépenses du mois</h2></section>
-    <button class="fab" id="addBtn">+ Ajouter une dépense</button>
-    ${renderTxList(monthTx.filter(x=>x.type==="depense"))}
+    <section class="card settings-zone zone-list">
+      <h2 class="settings-zone-title">Dépenses · ${monthTitle(localMonthKey())} · ${monthTx.filter(x=>x.type==="depense").length}</h2>
+      <button class="fab" id="addBtn">+ Ajouter une dépense</button>
+      ${renderTxList(monthTx.filter(x=>x.type==="depense"))}
+    </section>
   `;
 }
 
@@ -874,8 +882,8 @@ function monthsView(){
     ${monthsTabsHtml(scope)}
     ${missing.length ? `<div class="notice orange">Pour voir les mois, indique le solde de départ du ${missing.join(" et du ")} dans Réglages.</div>` : ""}
     ${Object.keys(byYear).sort().reverse().map(y=>`
-      <section class="section-title"><h2>${y}</h2></section>
-      <div class="card">
+      <section class="card settings-zone">
+        <h2 class="settings-zone-title">${y}</h2>
         ${byYear[y].map(k=>{
           const s=monthSummary(k,scope);
           const net=s.end-s.start;
@@ -890,7 +898,7 @@ function monthsView(){
             </div>
           </div>`;
         }).join("")}
-      </div>`).join("")}
+      </section>`).join("")}
   `;
 }
 
@@ -943,8 +951,8 @@ function monthDetailView(key){
   return `
     ${monthsTabsHtml(scope)}
     <button class="link-btn back-btn" data-jump="months">‹ Tous les mois</button>
-    <section class="hero card">
-      <small>${monthTitle(key)} · ${scopeLabel(scope)}</small>
+    <section class="card settings-zone zone-hero">
+      <h2 class="settings-zone-title">${monthTitle(key)}</h2>
       <div class="calc-lines hero-calc">
         <div><span>Solde de début</span><strong>${balanceText(s.start)}</strong></div>
         <div><span>Crédits</span><strong class="hero-credit">+${euro(cd.credits)}</strong></div>
@@ -953,10 +961,13 @@ function monthDetailView(key){
       </div>
       ${global ? `<div class="month-parts">${s.parts.map(p=>`<div><small>${ACCOUNTS[p.acc]}</small><span>${balanceText(p.start)} → ${balanceText(p.end)}</span></div>`).join("")}</div>` : ""}
     </section>
-    <div class="segmented detail-views">
-      ${views.map(([v,l])=>`<button type="button" data-detail-view="${v}" class="${v===detailView?"active":""}">${l}</button>`).join("")}
-    </div>
-    ${detailContentHtml(s.tx, global)}
+    <section class="card settings-zone zone-list">
+      <h2 class="settings-zone-title">Opérations · ${s.tx.length}</h2>
+      <div class="segmented detail-views">
+        ${views.map(([v,l])=>`<button type="button" data-detail-view="${v}" class="${v===detailView?"active":""}">${l}</button>`).join("")}
+      </div>
+      ${detailContentHtml(s.tx, global)}
+    </section>
   `;
 }
 
