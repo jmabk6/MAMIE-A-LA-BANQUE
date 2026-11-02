@@ -528,3 +528,9 @@ textarea {
 .settings-zone .section-title h3.acc-tag{font-size:16px}
 .acc-mamie{background:#efe7fb;color:#5b2d9e !important}
 .acc-commun{background:#fdf0dc;color:#9a5300 !important}
+
+/* Recherche : dates choisies dans le calendrier, avec ✕ pour effacer */
+.filters > .date-filter{grid-column:1 / -1;display:grid;grid-template-columns:28px minmax(0,1fr) 44px;align-items:center;gap:8px}
+.date-filter span{font-weight:700;color:var(--ink)}
+.date-filter input[type="date"]{min-height:44px;-webkit-appearance:none;appearance:none;text-align:left}
+.date-clear{height:44px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--muted);font-size:16px}

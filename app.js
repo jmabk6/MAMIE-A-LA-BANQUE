@@ -1013,8 +1013,8 @@ function searchView(){
         </select>
         <input id="minFilter" type="number" step="0.01" placeholder="Montant min." />
         <input id="maxFilter" type="number" step="0.01" placeholder="Montant max." />
-        <input id="fromFilter" type="text" inputmode="numeric" placeholder="Du (JJ/MM/AAAA)" autocomplete="off" />
-        <input id="toFilter" type="text" inputmode="numeric" placeholder="Au (JJ/MM/AAAA)" autocomplete="off" />
+        <div class="date-filter"><span>Du</span><input id="fromFilter" type="date" aria-label="Du" /><button type="button" class="date-clear" data-clear-date="fromFilter" aria-label="Effacer la date de début">✕</button></div>
+        <div class="date-filter"><span>Au</span><input id="toFilter" type="date" aria-label="Au" /><button type="button" class="date-clear" data-clear-date="toFilter" aria-label="Effacer la date de fin">✕</button></div>
       </div>
     </div>
     <div id="searchResults">${renderTxList(accountTx())}</div>
@@ -1709,6 +1709,11 @@ function bind(){
     ["q","typeFilter","payFilter","minFilter","maxFilter","fromFilter","toFilter"].forEach(id=>{
       const el=document.getElementById(id); el.addEventListener("input",applySearch); el.addEventListener("change",applySearch);
     });
+    // Sur iPhone, une date choisie dans le calendrier est difficile à effacer : bouton ✕.
+    document.querySelectorAll("[data-clear-date]").forEach(b=>b.onclick=()=>{
+      document.getElementById(b.dataset.clearDate).value="";
+      applySearch();
+    });
   }
 }
 
@@ -1781,30 +1786,20 @@ function autoGenerateRecurring(){
   return added;
 }
 
-function frDateToIso(value){
-  const v=String(value||"").trim();
-  if(!v) return "";
-  const m=v.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
-  if(!m) return null;
-  const d=Number(m[1]), mo=Number(m[2]), y=Number(m[3]);
-  const dt=new Date(y,mo-1,d);
-  if(dt.getFullYear()!==y || dt.getMonth()!==mo-1 || dt.getDate()!==d) return null;
-  return `${y}-${String(mo).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-}
-
 function applySearch(){
   const q=document.getElementById("q").value.trim().toLowerCase();
   const t=document.getElementById("typeFilter").value;
   const p=document.getElementById("payFilter").value;
   const min=parseFloat(document.getElementById("minFilter").value);
   const max=parseFloat(document.getElementById("maxFilter").value);
-  const from=frDateToIso(document.getElementById("fromFilter").value);
-  const to=frDateToIso(document.getElementById("toFilter").value);
+  // Champs du calendrier : AAAA-MM-JJ, ou vide si aucune date choisie.
+  const from=document.getElementById("fromFilter").value;
+  const to=document.getElementById("toFilter").value;
   const list=accountTx().filter(x=>{
     const matchesQ=!q || x.label.toLowerCase().includes(q) || String(x.amount).replace(".",",").includes(q) || String(x.amount).includes(q);
     return matchesQ && (!t||x.type===t) && (!p||x.payment===p) &&
       (isNaN(min)||x.amount>=min) && (isNaN(max)||x.amount<=max) &&
-      (from===null || !from || x.date>=from) && (to===null || !to || x.date<=to);
+      (!from || x.date>=from) && (!to || x.date<=to);
   });
   document.getElementById("searchResults").innerHTML=renderTxList(list);
 }
