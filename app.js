@@ -1,4 +1,7 @@
 const STORAGE_KEY = "mamie-banque-v2";
+// Affichée en bas de l'Accueil : à changer à chaque mise en ligne (avec le ?v= d'index.html),
+// pour que JM voie si l'iPhone a bien la nouvelle version.
+const APP_VERSION = "Version du 02/11 à 22 h 14";
 const STORAGE_PREFIX = "mamie-banque";
 const BACKUP_PREFIX = "mamie-banque-backup-";
 
@@ -615,6 +618,7 @@ function homeView(){
     ${upcoming.length ? renderTxList(upcoming, true, false) : '<div class="empty">Plus rien de prévu ce mois-ci</div>'}
     <section class="section-title"><h2>Dernières dépenses</h2><button class="link-btn" id="seeMonthBtn">Voir tout le mois</button></section>
     ${renderTxList(lastExpenses, true)}
+    <div class="app-version">${APP_VERSION}</div>
   `;
 }
 

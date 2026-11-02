@@ -546,3 +546,4 @@ textarea {
 .settings-zone .validation-card.validated{border-radius:12px;padding:12px;margin-bottom:12px}
 .settings-zone .form-card.validation-card{padding:0}
 .validation-subtitle{font-size:16px;margin:4px 0 8px;color:var(--brand)}
+.app-version{text-align:right;font-size:11px;color:var(--muted);margin:14px 4px 4px}
