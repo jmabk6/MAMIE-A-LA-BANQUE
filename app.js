@@ -64,7 +64,7 @@ async function loadRemote(){
       const localRaw=localStorage.getItem(STORAGE_KEY);
       const remoteRaw=JSON.stringify(state);
       if(localRaw!==null && localRaw!==remoteRaw) backupCurrentStorage("avant-chargement-serveur");
-      localStorage.setItem(STORAGE_KEY,remoteRaw); // cache de secours uniquement
+      try{ localStorage.setItem(STORAGE_KEY,remoteRaw); }catch{} // cache de secours uniquement
       remoteReady=true;
       return true;
     }catch(e){
@@ -111,6 +111,7 @@ async function saveRemote(){
 }
 
 async function bootRemote(){
+  pruneBackups(); // libère la mémoire remplie par les anciennes copies
   const ok=await loadRemote();
 
   if(!ok){
@@ -171,19 +172,40 @@ function makeBackupKey(reason="securite"){
   return key;
 }
 
+// La mémoire du téléphone est petite (~5 Mo) : on ne garde que les copies les plus récentes,
+// sinon elle se remplit et plus rien ne s'enregistre.
+const MAX_BACKUPS = 10;
+function pruneBackups(keep=MAX_BACKUPS){
+  try{
+    const keys=[];
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i);
+      if(k && k.startsWith(BACKUP_PREFIX)) keys.push(k);
+    }
+    keys.sort(); // l'horodatage ISO dans la clé donne l'ordre chronologique
+    keys.slice(0, Math.max(0, keys.length-keep)).forEach(k=>localStorage.removeItem(k));
+  }catch{}
+}
+
 function backupCurrentStorage(reason="avant-modification"){
   const raw=localStorage.getItem(STORAGE_KEY);
   if(raw===null) return null;
+  pruneBackups(MAX_BACKUPS-1);
   const key=makeBackupKey(reason);
   // Copie exacte de la valeur actuelle. On ne modifie ni ne supprime la clé source.
-  localStorage.setItem(key, raw);
+  // Une copie de sécurité qui ne passe pas ne doit jamais bloquer l'enregistrement.
+  try{ localStorage.setItem(key, raw); }catch{ return null; }
   return key;
 }
 
 function save(reason="avant-modification"){
   // Double sécurité : copie locale + MySQL. MySQL est désormais la source principale.
   backupCurrentStorage(reason);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }catch{
+    alert("La mémoire du téléphone est pleine : la copie locale n’a pas pu être faite. L’enregistrement sur le serveur continue.");
+  }
   saveRemote();
 }
 
