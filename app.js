@@ -978,11 +978,7 @@ function statementView(){
   return `
     <section class="card settings-zone statement-zone">
       <h2 class="settings-zone-title">Relevé · ${monthTitle(key)}</h2>
-      <div class="statement-sub">
-        <span class="acc-pill acc-${currentAccount}">${ACCOUNTS[currentAccount]}</span>
-        <span class="meta">${pointed} pointée(s) sur ${list.length}</span>
-      </div>
-      <div class="meta">Coche les opérations présentes sur le relevé bancaire.</div>
+      <div class="meta"><strong>${pointed} pointée(s) sur ${list.length}</strong> · coche les opérations présentes sur le relevé bancaire.</div>
       <button class="fab" id="statementAddBtn" data-month="${key}">+ Ajouter une opération non prévue</button>
       <div class="segmented statement-filters">
         ${STATEMENT_FILTERS.map(([k,l,f])=>`<button type="button" data-statement-filter="${k}" class="${k===statementFilter?"active":""}">${l} (${list.filter(f).length})</button>`).join("")}

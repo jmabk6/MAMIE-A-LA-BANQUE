@@ -540,7 +540,6 @@ textarea {
 .search-results .empty{padding:16px 10px}
 
 /* Relevé : mêmes zones que Réglages, bouton d'ajout en haut */
-.statement-sub{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
 .statement-zone .fab{margin:12px 0 4px}
 .statement-zone .statement-filters{margin:10px 0 4px}
 .settings-zone .validation-card{margin-top:0}
