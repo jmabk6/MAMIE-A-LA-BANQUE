@@ -1598,6 +1598,7 @@ function bind(){
           state.recurring[i]=obj;
           if(oldAcc!==obj.account) moveRecurringOperations(obj, oldAcc);
         }
+        if(i>=0) updateCurrentOccurrence(obj);
       } else state.recurring.push(obj);
       // Ses opérations encore sans catégorie prennent celle du récurrent.
       state.transactions.forEach(t=>{ if(String(t.recurringId)===String(obj.id) && !t.category && obj.category && !txLocked(t)) t.category=obj.category; });
@@ -1766,6 +1767,28 @@ function recurringFirstMonth(r){
 }
 function isSkippedOccurrence(r, period){
   return (state.skippedOccurrences||[]).some(x=>String(x.recurringId)===String(r.id) && x.period===period);
+}
+// Récurrent modifié : son opération du mois en cours, déjà créée, suit la modification
+// (montant, jour, nom) tant qu'elle n'est pas pointée ni dans un mois validé.
+// Une opération pointée est ce qui est passé à la banque : on n'y touche pas. Mois passés inchangés.
+function updateCurrentOccurrence(r){
+  const key=localMonthKey();
+  const [y,m]=key.split("-").map(Number);
+  const occurrence=expectedRecurringForMonth(r,m-1);
+  if(!occurrence) return 0;
+  const day=Math.min(Number(occurrence.day)||1,new Date(y,m,0).getDate());
+  let changed=0;
+  state.transactions.forEach(t=>{
+    if(String(t.recurringId)!==String(r.id) || occurrencePeriod(t)!==key || t.pointed || t.transferId || txLocked(t)) return;
+    const date=`${key}-${String(day).padStart(2,"0")}`;
+    if(txLocked(t,date)) return;
+    t.amount=Number(occurrence.amount)||0;
+    t.label=normalizeLabel(r.label);
+    t.date=date;
+    if(r.category) t.category=r.category;
+    changed++;
+  });
+  return changed;
 }
 function autoGenerateRecurring(){
   const current=localMonthKey();
