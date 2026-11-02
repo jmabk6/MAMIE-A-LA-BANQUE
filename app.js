@@ -1058,7 +1058,7 @@ function openingBalanceBlock(acc){
   const editing=!o || openingEdit===acc;
   return `<div class="settings-account">
     <div class="opening-row">
-      <strong>${ACCOUNTS[acc]}</strong>
+      <span class="acc-tag acc-${acc}">${ACCOUNTS[acc]}</span>
       ${o ? `<span class="meta">${monthTitle(o.month)}</span><strong class="${signClass(o.amount)}">${euro(o.amount)}</strong>` : '<span class="meta">Pas encore indiqué</span>'}
       ${o && !editing ? `<button class="mini-btn" data-edit-opening="${acc}">Modifier</button>` : ""}
     </div>
@@ -1075,7 +1075,7 @@ function recurringBlock(acc, type){
   const none=type==="recette" ? "Aucune recette récurrente" : "Aucune dépense récurrente";
   return `<div class="settings-account">
     <div class="section-title">
-      <h3>${ACCOUNTS[acc]}</h3>
+      <h3 class="acc-tag acc-${acc}">${ACCOUNTS[acc]}</h3>
       <button class="link-btn" data-add-recurring="${type}" data-recurring-account="${acc}">+ Ajouter</button>
     </div>
     ${list.length ? list.map(recurringCard).join("") : `<div class="empty small-empty">${none}</div>`}
@@ -1100,13 +1100,13 @@ function settingsView(){
         </span>
       </div>`).join("")}
       <button class="secondary-btn" id="addCategoryBtn" style="margin-top:10px">+ Ajouter une catégorie</button>`)}
-    <details class="card settings-zone settings-backup">
-      <summary class="settings-zone-title">Sauvegarde</summary>
-      <div class="meta" style="margin:10px 0">Recherche toutes les anciennes clés localStorage commençant par « mamie-banque ». Aucune clé n’est supprimée.</div>
+    <section class="card settings-zone">
+      <h2 class="settings-zone-title">Sauvegarde</h2>
+      <div class="meta" style="margin:10px 0">Le téléphone garde les 10 copies de sécurité les plus récentes. La sauvegarde principale est sur le serveur.</div>
       <button class="secondary-btn" id="scanStorageBtn">Rechercher mes anciennes données</button>
       <button class="secondary-btn" id="exportBackupBtn" style="margin-top:10px">Télécharger une sauvegarde de l’état actuel</button>
       <div id="recoveryPanel"></div>
-    </details>
+    </section>
   `;
 }
 

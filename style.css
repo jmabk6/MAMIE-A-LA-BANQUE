@@ -520,11 +520,11 @@ textarea {
 .settings-zone .section-title{margin:8px 0 6px}
 .settings-zone .section-title h3{font-size:15px;margin:0;color:var(--brand)}
 .opening-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 0}
-.opening-row > strong:first-child{flex:1;color:var(--brand)}
+.opening-row .acc-tag{margin-right:auto}
 .opening-form{padding:0}
 .small-empty{padding:10px}
-.settings-backup summary{cursor:pointer;list-style:none;margin-bottom:0}
-.settings-backup summary::-webkit-details-marker{display:none}
-.settings-backup summary::after{content:" ▸";float:right}
-.settings-backup[open] summary::after{content:" ▾"}
-.settings-backup[open] summary{margin-bottom:4px}
+/* Nom du compte bien visible : une pastille de couleur par compte */
+.acc-tag{display:inline-block;padding:6px 12px;border-radius:10px;font-size:16px;font-weight:800}
+.settings-zone .section-title h3.acc-tag{font-size:16px}
+.acc-mamie{background:#efe7fb;color:#5b2d9e !important}
+.acc-commun{background:#fdf0dc;color:#9a5300 !important}
