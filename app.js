@@ -1045,44 +1045,53 @@ function recurringCard(r){
     </div>`;
 }
 
-function recurringAccountCard(acc){
-  const mine=state.recurring.filter(r=>accountOf(r)===acc);
-  const recettes=mine.filter(r=>r.type==="recette");
-  const prelevements=mine.filter(r=>r.type==="prelevement");
-  return `
-    <div class="card recurring-account-card">
-      <h2 class="recurring-account-title">${ACCOUNTS[acc]}</h2>
-      <div class="section-title">
-        <h3>Recettes récurrentes</h3>
-        <button class="link-btn" data-add-recurring="recette" data-recurring-account="${acc}">+ Ajouter</button>
-      </div>
-      ${recettes.length?recettes.map(recurringCard).join(""):'<div class="empty">Aucune recette récurrente</div>'}
-      <div class="section-title">
-        <h3>Prélèvements récurrents</h3>
-        <button class="link-btn" data-add-recurring="prelevement" data-recurring-account="${acc}">+ Ajouter</button>
-      </div>
-      ${prelevements.length?prelevements.map(recurringCard).join(""):'<div class="empty">Aucun prélèvement récurrent</div>'}
-    </div>`;
+// Réglages rangés par sujet ; dans chaque zone, les deux comptes l'un sous l'autre.
+let openingEdit=null; // compte dont le formulaire de solde de départ est ouvert
+function settingsZone(title, body){
+  return `<section class="card settings-zone">
+    <h2 class="settings-zone-title">${title}</h2>
+    ${body}
+  </section>`;
+}
+function openingBalanceBlock(acc){
+  const o=openingBalance(acc);
+  const editing=!o || openingEdit===acc;
+  return `<div class="settings-account">
+    <div class="opening-row">
+      <strong>${ACCOUNTS[acc]}</strong>
+      ${o ? `<span class="meta">${monthTitle(o.month)}</span><strong class="${signClass(o.amount)}">${euro(o.amount)}</strong>` : '<span class="meta">Pas encore indiqué</span>'}
+      ${o && !editing ? `<button class="mini-btn" data-edit-opening="${acc}">Modifier</button>` : ""}
+    </div>
+    ${editing ? `<form class="form-card opening-form" data-opening-form="${acc}">
+      <label>Mois<input name="month" type="month" required value="${o?o.month:localMonthKey()}"></label>
+      <label>Solde au 1er du mois<input name="amount" type="number" inputmode="decimal" step="0.01" required value="${o?o.amount:""}" placeholder="0,00"></label>
+      <button class="primary" type="submit">Enregistrer le solde</button>
+      ${o ? `<button class="link-btn" type="button" data-cancel-opening style="margin-top:8px">Annuler</button>` : ""}
+    </form>` : ""}
+  </div>`;
+}
+function recurringBlock(acc, type){
+  const list=state.recurring.filter(r=>accountOf(r)===acc && r.type===type);
+  const none=type==="recette" ? "Aucune recette récurrente" : "Aucune dépense récurrente";
+  return `<div class="settings-account">
+    <div class="section-title">
+      <h3>${ACCOUNTS[acc]}</h3>
+      <button class="link-btn" data-add-recurring="${type}" data-recurring-account="${acc}">+ Ajouter</button>
+    </div>
+    ${list.length ? list.map(recurringCard).join("") : `<div class="empty small-empty">${none}</div>`}
+  </div>`;
 }
 
 function settingsView(){
-  const o=openingBalance();
+  const accs=Object.keys(ACCOUNTS);
   return `
-    <div class="card form-card">
-      <div class="section-title" style="margin-top:0"><h2>Solde de départ · ${ACCOUNTS[currentAccount]}</h2></div>
+    ${settingsZone("Soldes de départ", `
       <div class="meta">Le solde du relevé bancaire au 1er jour d’un mois. Les soldes des autres mois en seront déduits.</div>
-      <form id="openingForm">
-        <label>Mois<input id="openingMonth" type="month" required value="${o?o.month:localMonthKey()}"></label>
-        <label>Solde au 1er du mois<input id="openingAmount" type="number" inputmode="decimal" step="0.01" required value="${o?o.amount:""}" placeholder="0,00"></label>
-        <button class="primary" type="submit">Enregistrer le solde</button>
-      </form>
-    </div>
-
-    ${Object.keys(ACCOUNTS).map(recurringAccountCard).join("")}
-
-    <div class="meta" style="padding:0 8px 16px">Les récurrents sont ajoutés automatiquement dans chaque mois, sur leur compte. Une échéance supprimée n’est pas recréée.</div>
-    <div class="card" style="margin-top:16px">
-      <div class="section-title" style="margin-top:0"><h2>Catégories</h2></div>
+      ${accs.map(openingBalanceBlock).join("")}`)}
+    ${settingsZone("Recettes récurrentes", accs.map(a=>recurringBlock(a,"recette")).join(""))}
+    ${settingsZone("Dépenses récurrentes", accs.map(a=>recurringBlock(a,"prelevement")).join("")+
+      '<div class="meta" style="margin-top:10px">Les récurrents sont ajoutés automatiquement dans chaque mois, sur leur compte. Une échéance supprimée n’est pas recréée.</div>')}
+    ${settingsZone("Catégories", `
       ${categories().map((c,i)=>`<div class="category-item">
         <span>${escapeHtml(c)}</span>
         <span class="recurring-actions">
@@ -1090,15 +1099,14 @@ function settingsView(){
           <button class="mini-btn danger" data-delete-category="${i}">Suppr.</button>
         </span>
       </div>`).join("")}
-      <button class="secondary-btn" id="addCategoryBtn" style="margin-top:10px">+ Ajouter une catégorie</button>
-    </div>
-    <div class="card" style="margin-top:16px">
-      <div class="section-title" style="margin-top:0"><h2>Sauvegarde et récupération</h2></div>
-      <div class="meta" style="margin-bottom:10px">Recherche toutes les anciennes clés localStorage commençant par « mamie-banque ». Aucune clé n’est supprimée.</div>
+      <button class="secondary-btn" id="addCategoryBtn" style="margin-top:10px">+ Ajouter une catégorie</button>`)}
+    <details class="card settings-zone settings-backup">
+      <summary class="settings-zone-title">Sauvegarde</summary>
+      <div class="meta" style="margin:10px 0">Recherche toutes les anciennes clés localStorage commençant par « mamie-banque ». Aucune clé n’est supprimée.</div>
       <button class="secondary-btn" id="scanStorageBtn">Rechercher mes anciennes données</button>
       <button class="secondary-btn" id="exportBackupBtn" style="margin-top:10px">Télécharger une sauvegarde de l’état actuel</button>
-    </div>
-    <div id="recoveryPanel"></div>
+      <div id="recoveryPanel"></div>
+    </details>
   `;
 }
 
@@ -1256,7 +1264,7 @@ function render(view=currentView, options={}){
   const navView = view==="monthDetail" ? "months" : view;
   document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("active",b.dataset.view===navView));
   const topSwitch=document.querySelector(".account-switch:not(.months-tabs)");
-  if(topSwitch) topSwitch.hidden = navView==="months" || navView==="home";
+  if(topSwitch) topSwitch.hidden = navView==="months" || navView==="home" || navView==="settings";
   document.querySelectorAll("[data-account]").forEach(b=>b.classList.toggle("active",b.dataset.account===currentAccount));
   const app=document.getElementById("app");
   if(view==="home") app.innerHTML=homeView();
@@ -1368,18 +1376,21 @@ function bind(){
     row.onclick=open;
     row.onkeydown=e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); open(); } };
   });
-  const openingForm=document.getElementById("openingForm");
-  if(openingForm) openingForm.onsubmit=e=>{
+  document.querySelectorAll("[data-edit-opening]").forEach(b=>b.onclick=()=>{ openingEdit=b.dataset.editOpening; render("settings"); });
+  document.querySelectorAll("[data-cancel-opening]").forEach(b=>b.onclick=()=>{ openingEdit=null; render("settings"); });
+  document.querySelectorAll("[data-opening-form]").forEach(form=>form.onsubmit=e=>{
     e.preventDefault();
-    const month=document.getElementById("openingMonth").value;
-    const amount=Number(document.getElementById("openingAmount").value);
-    if(!/^\d{4}-\d{2}$/.test(month) || !Number.isFinite(amount)) return;
-    state.openingBalances={...(state.openingBalances||{}), [currentAccount]:{month,amount}};
+    const acc=form.dataset.openingForm;
+    const month=form.elements.month.value;
+    const amount=Number(form.elements.amount.value);
+    if(!ACCOUNTS[acc] || !/^\d{4}-\d{2}$/.test(month) || !Number.isFinite(amount)) return;
+    state.openingBalances={...(state.openingBalances||{}), [acc]:{month,amount}};
     save("avant-solde-depart");
     autoGenerateRecurring();
-    alert(`Solde de départ enregistré pour le ${ACCOUNTS[currentAccount]}.`);
+    openingEdit=null;
+    alert(`Solde de départ enregistré pour le ${ACCOUNTS[acc]}.`);
     render("settings");
-  };
+  });
   document.querySelectorAll("[data-jump]").forEach(b=>b.onclick=()=>render(b.dataset.jump));
   document.querySelectorAll(".nav-btn").forEach(b=>b.onclick=()=>render(b.dataset.view));
   const add=document.getElementById("addBtn");

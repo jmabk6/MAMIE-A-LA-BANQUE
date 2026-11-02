@@ -511,3 +511,20 @@ textarea {
 .hero .hero-calc{margin-top:10px;font-size:14px}
 .big-dues{margin-top:12px}
 .big-dues .meta{color:#226b3a;margin-top:4px}
+
+/* Réglages : une zone par sujet, les deux comptes l'un sous l'autre */
+.settings-zone{margin-top:16px;padding-top:0;overflow:hidden}
+.settings-zone-title{margin:0 -16px 12px;padding:12px 16px;background:var(--brand);color:#fff;font-size:16px;letter-spacing:.3px;text-transform:uppercase}
+.settings-account{padding:6px 0 10px;border-bottom:1px solid var(--line)}
+.settings-account:last-of-type{border-bottom:0}
+.settings-zone .section-title{margin:8px 0 6px}
+.settings-zone .section-title h3{font-size:15px;margin:0;color:var(--brand)}
+.opening-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 0}
+.opening-row > strong:first-child{flex:1;color:var(--brand)}
+.opening-form{padding:0}
+.small-empty{padding:10px}
+.settings-backup summary{cursor:pointer;list-style:none;margin-bottom:0}
+.settings-backup summary::-webkit-details-marker{display:none}
+.settings-backup summary::after{content:" ▸";float:right}
+.settings-backup[open] summary::after{content:" ▾"}
+.settings-backup[open] summary{margin-bottom:4px}
