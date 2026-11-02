@@ -520,12 +520,12 @@ textarea {
 .settings-zone .section-title{margin:8px 0 6px}
 .settings-zone .section-title h3{font-size:15px;margin:0;color:var(--brand)}
 .opening-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 0}
-.opening-row .acc-tag{margin-right:auto}
+.opening-row .acc-pill{margin-right:auto}
 .opening-form{padding:0}
 .small-empty{padding:10px}
 /* Nom du compte bien visible : une pastille de couleur par compte */
-.acc-tag{display:inline-block;padding:6px 12px;border-radius:10px;font-size:16px;font-weight:800}
-.settings-zone .section-title h3.acc-tag{font-size:16px}
+.acc-pill{display:inline-block;padding:6px 12px;border-radius:10px;font-size:16px;font-weight:800}
+.settings-zone .section-title h3.acc-pill{font-size:16px}
 .acc-mamie{background:#efe7fb;color:#5b2d9e !important}
 .acc-commun{background:#fdf0dc;color:#9a5300 !important}
 
@@ -534,3 +534,7 @@ textarea {
 .date-filter span{font-weight:700;color:var(--ink)}
 .date-filter input[type="date"]{min-height:44px;-webkit-appearance:none;appearance:none;text-align:left}
 .date-clear{height:44px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--muted);font-size:16px}
+
+/* Recherche : mêmes zones que Réglages ; la liste des résultats sans seconde carte */
+.search-results #searchResults > .card{box-shadow:none;padding:0;margin:0;border-radius:0}
+.search-results .empty{padding:16px 10px}

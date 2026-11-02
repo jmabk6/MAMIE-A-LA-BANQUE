@@ -996,9 +996,11 @@ function statementView(){
   `;
 }
 
+function searchCountText(n){ return n>1 ? `${n} opérations` : `${n} opération`; }
 function searchView(){
   return `
-    <div class="card search-box">
+    <section class="card settings-zone search-box">
+      <h2 class="settings-zone-title">Rechercher</h2>
       <input id="q" placeholder="Rechercher une enseigne, un montant…" />
       <div class="filters" style="margin-top:10px">
         <select id="typeFilter">
@@ -1016,8 +1018,11 @@ function searchView(){
         <div class="date-filter"><span>Du</span><input id="fromFilter" type="date" aria-label="Du" /><button type="button" class="date-clear" data-clear-date="fromFilter" aria-label="Effacer la date de début">✕</button></div>
         <div class="date-filter"><span>Au</span><input id="toFilter" type="date" aria-label="Au" /><button type="button" class="date-clear" data-clear-date="toFilter" aria-label="Effacer la date de fin">✕</button></div>
       </div>
-    </div>
-    <div id="searchResults">${renderTxList(accountTx())}</div>
+    </section>
+    <section class="card settings-zone search-results">
+      <h2 class="settings-zone-title">Résultats · <span id="searchCount">${searchCountText(accountTx().length)}</span></h2>
+      <div id="searchResults">${renderTxList(accountTx())}</div>
+    </section>
   `;
 }
 
@@ -1058,7 +1063,7 @@ function openingBalanceBlock(acc){
   const editing=!o || openingEdit===acc;
   return `<div class="settings-account">
     <div class="opening-row">
-      <span class="acc-tag acc-${acc}">${ACCOUNTS[acc]}</span>
+      <span class="acc-pill acc-${acc}">${ACCOUNTS[acc]}</span>
       ${o ? `<span class="meta">${monthTitle(o.month)}</span><strong class="${signClass(o.amount)}">${euro(o.amount)}</strong>` : '<span class="meta">Pas encore indiqué</span>'}
       ${o && !editing ? `<button class="mini-btn" data-edit-opening="${acc}">Modifier</button>` : ""}
     </div>
@@ -1075,7 +1080,7 @@ function recurringBlock(acc, type){
   const none=type==="recette" ? "Aucune recette récurrente" : "Aucune dépense récurrente";
   return `<div class="settings-account">
     <div class="section-title">
-      <h3 class="acc-tag acc-${acc}">${ACCOUNTS[acc]}</h3>
+      <h3 class="acc-pill acc-${acc}">${ACCOUNTS[acc]}</h3>
       <button class="link-btn" data-add-recurring="${type}" data-recurring-account="${acc}">+ Ajouter</button>
     </div>
     ${list.length ? list.map(recurringCard).join("") : `<div class="empty small-empty">${none}</div>`}
@@ -1802,5 +1807,6 @@ function applySearch(){
       (!from || x.date>=from) && (!to || x.date<=to);
   });
   document.getElementById("searchResults").innerHTML=renderTxList(list);
+  document.getElementById("searchCount").textContent=searchCountText(list.length);
 }
 bootRemote();
