@@ -902,7 +902,7 @@ function statementValidationHtml(){
   let html="";
   if(last){
     const v=monthValidation(acc,last);
-    html+=`<div class="card validation-card validated">
+    html+=`<div class="validation-card validated">
       <div><strong>${monthTitle(last)} validé ✓</strong> le ${new Date(v.validatedAt).toLocaleDateString("fr-FR")} : ${euro(v.endBalance)}</div>
       <div class="meta">Ce mois est verrouillé : ses opérations ne peuvent plus être ajoutées, modifiées ni supprimées.</div>
       <button class="secondary-btn" data-unlock-month="${last}" style="margin-top:10px">Déverrouiller ${monthTitle(last)}</button>
@@ -911,8 +911,8 @@ function statementValidationHtml(){
   if(todo){
     const m=accountMonthSummary(todo,acc);
     const {credits,debits}=creditsDebits(m.tx);
-    html+=`<div class="card form-card validation-card">
-      <div class="section-title" style="margin-top:0"><h2>Valider le solde de fin · ${monthTitle(todo)}</h2></div>
+    html+=`<div class="form-card validation-card">
+      <h3 class="validation-subtitle">Valider le solde de fin · ${monthTitle(todo)}</h3>
       <div class="calc-lines">
         <div><span>Solde de début</span><strong>${euro(m.start)}</strong></div>
         <div><span>Crédits</span><strong class="blue">+${euro(credits)}</strong></div>
@@ -924,7 +924,10 @@ function statementValidationHtml(){
       <button class="primary" id="validateMonthBtn" type="button" disabled style="margin-top:10px">Valider le solde de fin</button>
     </div>`;
   }
-  return html;
+  return html ? `<section class="card settings-zone">
+    <h2 class="settings-zone-title">Solde de fin</h2>
+    ${html}
+  </section>` : "";
 }
 
 function monthDetailView(key){
@@ -973,15 +976,18 @@ function statementView(){
   const pointed=list.filter(t=>t.pointed).length;
   const shown=list.filter((STATEMENT_FILTERS.find(([k])=>k===statementFilter)||STATEMENT_FILTERS[0])[2]);
   return `
-    <section class="statement-head card">
-      <small>Relevé · ${ACCOUNTS[currentAccount]}</small>
-      <h2>${monthTitle(key)}</h2>
-      <div class="meta">${pointed} pointée(s) sur ${list.length} · coche les opérations présentes sur le relevé bancaire</div>
-    </section>
-    <div class="segmented statement-filters">
-      ${STATEMENT_FILTERS.map(([k,l,f])=>`<button type="button" data-statement-filter="${k}" class="${k===statementFilter?"active":""}">${l} (${list.filter(f).length})</button>`).join("")}
-    </div>
-    <div class="card">
+    <section class="card settings-zone statement-zone">
+      <h2 class="settings-zone-title">Relevé · ${monthTitle(key)}</h2>
+      <div class="statement-sub">
+        <span class="acc-pill acc-${currentAccount}">${ACCOUNTS[currentAccount]}</span>
+        <span class="meta">${pointed} pointée(s) sur ${list.length}</span>
+      </div>
+      <div class="meta">Coche les opérations présentes sur le relevé bancaire.</div>
+      <button class="fab" id="statementAddBtn" data-month="${key}">+ Ajouter une opération non prévue</button>
+      <div class="segmented statement-filters">
+        ${STATEMENT_FILTERS.map(([k,l,f])=>`<button type="button" data-statement-filter="${k}" class="${k===statementFilter?"active":""}">${l} (${list.filter(f).length})</button>`).join("")}
+      </div>
+      <div class="statement-list">
       ${shown.length ? shown.map(tx=>`
         <div class="reconcile-item">
           <label class="point-zone" aria-label="Pointer ${escapeHtml(tx.label)}"><input type="checkbox" data-point="${tx.id}" ${tx.pointed?"checked":""}></label>
@@ -990,8 +996,8 @@ function statementView(){
             <div class="amount ${typeClass(tx)}">${tx.type==="recette"?"+":"-"}${euro(tx.amount)}</div>
           </div>
         </div>`).join("") : `<div class="empty">${list.length ? "Aucune opération dans cet onglet" : "Aucune opération ce mois-ci"}</div>`}
-    </div>
-    <button class="fab" id="statementAddBtn" data-month="${key}">+ Ajouter une opération non prévue</button>
+      </div>
+    </section>
     ${statementValidationHtml()}
   `;
 }

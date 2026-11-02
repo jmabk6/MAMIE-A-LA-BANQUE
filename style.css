@@ -538,3 +538,12 @@ textarea {
 /* Recherche : mêmes zones que Réglages ; la liste des résultats sans seconde carte */
 .search-results #searchResults > .card{box-shadow:none;padding:0;margin:0;border-radius:0}
 .search-results .empty{padding:16px 10px}
+
+/* Relevé : mêmes zones que Réglages, bouton d'ajout en haut */
+.statement-sub{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+.statement-zone .fab{margin:12px 0 4px}
+.statement-zone .statement-filters{margin:10px 0 4px}
+.settings-zone .validation-card{margin-top:0}
+.settings-zone .validation-card.validated{border-radius:12px;padding:12px;margin-bottom:12px}
+.settings-zone .form-card.validation-card{padding:0}
+.validation-subtitle{font-size:16px;margin:4px 0 8px;color:var(--brand)}
