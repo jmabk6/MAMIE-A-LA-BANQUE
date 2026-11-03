@@ -1,7 +1,7 @@
 const STORAGE_KEY = "mamie-banque-v2";
 // Affichée en bas de l'Accueil : à changer à chaque mise en ligne (avec le ?v= d'index.html),
 // pour que JM voie si l'iPhone a bien la nouvelle version.
-const APP_VERSION = "Version du 03/11 à 10 h 35";
+const APP_VERSION = "Version du 03/11 à 10 h 55";
 const STORAGE_PREFIX = "mamie-banque";
 const BACKUP_PREFIX = "mamie-banque-backup-";
 
@@ -11,6 +11,10 @@ const API_CODE_KEY = "mamie-banque-api-code";
 let remoteReady = false;
 let remoteSaving = false;
 let remoteSaveAgain = false;
+// Deux téléphones : les données telles que le serveur les a renvoyées la dernière fois qu'on les a lues.
+// Avant d'enregistrer, on vérifie que le serveur n'a pas changé entre-temps (sinon on écraserait
+// la saisie faite sur l'autre téléphone). null = inconnu, on enregistre sans vérifier.
+let lastServerJson = null;
 
 function getApiCode(){
   let code=localStorage.getItem(API_CODE_KEY) || "";
@@ -62,6 +66,7 @@ async function loadRemote(){
       if(!isValidState(j.data)) throw new Error("INVALID_STATE");
 
       state=cloneState(j.data);
+      lastServerJson=JSON.stringify(j.data);
       // Si le téléphone contient des saisies absentes du serveur (ex. version hors ligne
       // du 30/09), on les garde dans une copie de sécurité avant de les remplacer.
       const localRaw=localStorage.getItem(STORAGE_KEY);
@@ -94,7 +99,21 @@ async function saveRemote(){
   remoteSaving=true;
 
   try{
+    // Quelqu'un a-t-il enregistré depuis notre dernière lecture ? Alors on n'écrase pas.
+    if(lastServerJson!==null){
+      const now=await apiPost("load");
+      if(isValidState(now.data) && JSON.stringify(now.data)!==lastServerJson){
+        remoteSaveAgain=false;
+        applyServerConflict(now.data);
+        return false;
+      }
+    }
     await apiPost("save",{data:JSON.stringify(state)});
+    // Relire ce que le serveur a gardé, pour la prochaine vérification.
+    try{
+      const after=await apiPost("load");
+      lastServerJson=isValidState(after.data) ? JSON.stringify(after.data) : null;
+    }catch{ lastServerJson=null; }
     return true;
   }catch(e){
     if(e.message==="BAD_CODE"){
@@ -112,6 +131,39 @@ async function saveRemote(){
     }
   }
 }
+
+// Les données ont changé sur le serveur (autre téléphone) : on garde notre saisie dans une copie de
+// sécurité, on prévient, puis on prend les données du serveur.
+const FORM_VIEWS=["add","editTransaction","recurringForm"];
+function applyServerConflict(serverData){
+  backupCurrentStorage("conflit-autre-telephone");
+  alert("Les données ont été modifiées sur un autre téléphone. Ta dernière saisie n’a pas été enregistrée : refais-la.");
+  takeServerData(serverData);
+  render(FORM_VIEWS.includes(currentView) ? "home" : currentView);
+}
+function takeServerData(serverData){
+  state=cloneState(serverData);
+  lastServerJson=JSON.stringify(serverData);
+  try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); }catch{}
+  autoGenerateRecurring(); // nouveau mois pendant l'absence : ses récurrents
+}
+// Retour sur l'application (autre appli, téléphone rallumé) : on relit le serveur, sans message.
+// Pas pendant un formulaire, pour ne pas effacer une saisie en cours.
+async function refreshOnReturn(){
+  if(document.visibilityState!=="visible" || !remoteReady || remoteSaving || FORM_VIEWS.includes(currentView)) return;
+  if(!localStorage.getItem(API_CODE_KEY)) return; // jamais de demande de code en revenant
+  const seen=lastServerJson;
+  try{
+    const j=await apiPost("load");
+    if(!isValidState(j.data) || JSON.stringify(j.data)===lastServerJson) return;
+    // Une saisie a commencé ou a été enregistrée pendant la lecture : on ne touche à rien.
+    if(remoteSaving || lastServerJson!==seen || FORM_VIEWS.includes(currentView)) return;
+    takeServerData(j.data);
+    returnScroll={view:currentView, y:window.scrollY};
+    render(currentView);
+  }catch{} // pas d'Internet : on réessaiera au prochain retour
+}
+document.addEventListener("visibilitychange", refreshOnReturn);
 
 async function bootRemote(){
   pruneBackups(); // libère la mémoire remplie par les anciennes copies
