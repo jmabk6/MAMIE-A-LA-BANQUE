@@ -1,7 +1,7 @@
 const STORAGE_KEY = "mamie-banque-v2";
 // Affichée en bas de l'Accueil : à changer à chaque mise en ligne (avec le ?v= d'index.html),
 // pour que JM voie si l'iPhone a bien la nouvelle version.
-const APP_VERSION = "Version du 03/11 à 10 h 00";
+const APP_VERSION = "Version du 03/11 à 10 h 19";
 const STORAGE_PREFIX = "mamie-banque";
 const BACKUP_PREFIX = "mamie-banque-backup-";
 
@@ -878,6 +878,65 @@ function cumulSince(key, scope){
     return sum + accountMonthSummary(key,acc).end - o.amount;
   },0);
 }
+// ---------- Mois (Global) : prévu, dépensé, économisé ----------
+// Même calcul que le reste à dépenser de l'Accueil, fait pour un mois donné, sur les deux comptes :
+// prévu = recettes − prélèvements mensuels (montant réel du mois) − parts mises de côté ;
+// dépensé = dépenses hors récurrents (sans les retraits au distributeur ni les virements entre comptes).
+const EXCEPTIONAL_CATEGORY="EXCEPTIONNELLE";
+let budgetWithExceptional=true; // case « avec les exceptionnelles » : une seule pour tous les mois, simple vue
+function isExceptional(t){ return String(t.category||"").trim().toUpperCase()===EXCEPTIONAL_CATEGORY; }
+function monthBudget(key){
+  const m=Number(key.slice(5))-1;
+  const sum=list=>list.reduce((s,t)=>s+(Number(t.amount)||0),0);
+  const monthTx=state.transactions.filter(t=>!isLegacyDemoTransaction(t) &&
+    typeof t.date==="string" && t.date.slice(0,7)===key && countsInBudget(t));
+  const allRecurring=state.recurring.filter(r=>!isLegacyDemoRecurring(r));
+  const recurring=allRecurring.filter(r=>recurringFirstMonth(r)<=key);
+  const linked=new Set(allRecurring.map(r=>String(r.id)));
+  const isLinked=t=>linked.has(String(t.recurringId));
+  // Une échéance supprimée ce mois-là compte pour 0, pas pour son montant prévu.
+  const amountOf=r=>isSkippedOccurrence(r,key)
+    ? sum(monthTx.filter(t=>String(t.recurringId)===String(r.id) && t.type===r.type))
+    : actualOrExpectedRecurringAmount(r,monthTx,m);
+  const recettes=sum(recurring.filter(r=>r.type==="recette" && monthApplies(r,m)).map(r=>({amount:amountOf(r)}))) +
+    sum(monthTx.filter(t=>t.type==="recette" && !isLinked(t)));
+  const prelevements=sum(recurring.filter(r=>r.type==="prelevement" && (r.frequency||"monthly")==="monthly").map(r=>({amount:amountOf(r)}))) +
+    sum(monthTx.filter(t=>t.type==="prelevement" && !isLinked(t)));
+  const provisions=recurring.reduce((s,r)=>s+monthlyProvision(r),0);
+  const depenses=monthTx.filter(t=>t.type==="depense");
+  const exceptional=sum(depenses.filter(isExceptional));
+  const prevu=recettes-prelevements-provisions;
+  const depense=sum(depenses)-(budgetWithExceptional?0:exceptional);
+  return {prevu, depense, exceptional, solde:prevu-depense};
+}
+function budgetResultHtml(v, big=false){
+  const saved=v>=-0.005;
+  return `<span>${saved?"Économisé":"Trop dépensé"}</span><strong class="${saved?"green":"red"}${big?" budget-big":""}">${saved?"+":""}${euro(saved?Math.abs(v):v)}</strong>`;
+}
+function budgetFrameHtml(key){
+  const b=monthBudget(key);
+  const current=key===localMonthKey();
+  return `<div class="budget-frame">
+    ${current ? '<div class="budget-current">en cours</div>' : ""}
+    <div class="budget-line"><span>Prévu pour ses dépenses</span><strong>${euro(b.prevu)}</strong></div>
+    <div class="budget-line"><span>Réellement dépensé
+      <label class="budget-check"><input type="checkbox" data-budget-exceptional ${budgetWithExceptional?"checked":""}> avec les exceptionnelles</label></span>
+      <strong>${euro(b.depense)}</strong></div>
+    ${!budgetWithExceptional && b.exceptional>0 ? `<div class="budget-note">Exceptionnelles mises de côté : ${euro(b.exceptional)}</div>` : ""}
+    <div class="budget-line budget-result">${budgetResultHtml(b.solde)}</div>
+  </div>`;
+}
+// Total depuis le début : mois terminés seulement, jamais le mois en cours.
+function budgetTotalHtml(months){
+  const done=months.filter(k=>k<localMonthKey()).sort();
+  const total=done.reduce((s,k)=>s+monthBudget(k).solde,0);
+  return `<section class="card budget-total">
+    <h2 class="budget-total-title">Depuis le début</h2>
+    ${done.length ? `<div class="budget-line budget-result">${budgetResultHtml(total,true)}</div>
+      <div class="meta">Mois terminés seulement (${done.length===1 ? monthTitle(done[0]).toLowerCase() : `de ${monthTitle(done[0]).toLowerCase()} à ${monthTitle(done[done.length-1]).toLowerCase()}`})${budgetWithExceptional?"":" · sans les dépenses exceptionnelles"}</div>`
+      : '<div class="meta">Le total apparaîtra à la fin du premier mois.</div>'}
+  </section>`;
+}
 // Début + crédits − débits = fin calculée ; les espèces ne passent pas par la banque.
 function creditsDebits(tx){
   const bank=tx.filter(t=>t.payment!=="Espèces");
@@ -891,10 +950,13 @@ function monthsView(){
   const scope=currentMonthsScope();
   const missing=scopeAccounts(scope).filter(acc=>!openingBalance(acc)).map(acc=>ACCOUNTS[acc]);
   const byYear={};
-  visibleMonths(scope).reverse().forEach(k=>{ (byYear[k.slice(0,4)] ||= []).push(k); });
+  const months=visibleMonths(scope);
+  const global=scope==="global";
+  [...months].reverse().forEach(k=>{ (byYear[k.slice(0,4)] ||= []).push(k); });
   return `
     ${monthsTabsHtml(scope)}
     ${missing.length ? `<div class="notice orange">Pour voir les mois, indique le solde de départ du ${missing.join(" et du ")} dans Réglages.</div>` : ""}
+    ${global && months.length ? budgetTotalHtml(months) : ""}
     ${Object.keys(byYear).sort().reverse().map(y=>`
       <section class="card settings-zone">
         <h2 class="settings-zone-title">${y}</h2>
@@ -910,6 +972,7 @@ function monthsView(){
               <span>Solde du mois <strong class="${net<0?"red":"green"}">${signedEuro(net)}</strong></span>
               <span>Cumulé <strong class="${cumul<0?"red":"cumul"}">${signedEuro(cumul)}</strong></span>
             </div>
+            ${global ? budgetFrameHtml(k) : ""}
           </div>`;
         }).join("")}
       </section>`).join("")}
@@ -1296,6 +1359,8 @@ function importBackupFile(file){
 }
 
 function render(view=currentView, options={}){
+  // Case « avec les exceptionnelles » : recochée chaque fois qu'on arrive sur Mois depuis un autre écran.
+  if((view==="months" || view==="monthDetail") && currentView!=="months" && currentView!=="monthDetail") budgetWithExceptional=true;
   currentView=view;
   const navView = view==="monthDetail" ? "months" : view;
   document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("active",b.dataset.view===navView));
@@ -1408,9 +1473,15 @@ function bind(){
     render("statement");
   });
   document.querySelectorAll("[data-open-month]").forEach(row=>{
-    const open=()=>render("monthDetail",{month:row.dataset.openMonth});
+    const open=e=>{ if(e && e.target.closest(".budget-check")) return; render("monthDetail",{month:row.dataset.openMonth}); };
     row.onclick=open;
-    row.onkeydown=e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); open(); } };
+    row.onkeydown=e=>{ if(e.target.closest(".budget-check")) return; if(e.key==="Enter"||e.key===" "){ e.preventDefault(); open(); } };
+  });
+  // Une seule case pour tous les mois : la changer recalcule tous les mois et le total.
+  document.querySelectorAll("[data-budget-exceptional]").forEach(box=>box.onchange=()=>{
+    budgetWithExceptional=box.checked;
+    returnScroll={view:"months", y:window.scrollY};
+    render("months");
   });
   document.querySelectorAll("[data-edit-opening]").forEach(b=>b.onclick=()=>{ openingEdit=b.dataset.editOpening; render("settings"); });
   document.querySelectorAll("[data-cancel-opening]").forEach(b=>b.onclick=()=>{ openingEdit=null; render("settings"); });
