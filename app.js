@@ -1,7 +1,7 @@
 const STORAGE_KEY = "mamie-banque-v2";
 // Affichée en bas de l'Accueil : à changer à chaque mise en ligne (avec le ?v= d'index.html),
 // pour que JM voie si l'iPhone a bien la nouvelle version.
-const APP_VERSION = "Version du 03/11 à 10 h 34";
+const APP_VERSION = "Version du 03/11 à 10 h 35";
 const STORAGE_PREFIX = "mamie-banque";
 const BACKUP_PREFIX = "mamie-banque-backup-";
 
@@ -1511,7 +1511,7 @@ function bind(){
     const today=new Date(), todayIso=`${localMonthKey(today)}-${String(today.getDate()).padStart(2,"0")}`;
     const date=todayIso.startsWith(key) ? todayIso : `${key}-${String(new Date(y,m,0).getDate()).padStart(2,"0")}`;
     transactionReturnView="statement";
-    render("add",{type:"prelevement",unknown:true,date});
+    render("add",{type:"depense",unknown:true,date}); // le plus courant : carte, chèque… (validé par JM le 03/11/2026)
   };
 
   document.querySelectorAll("[data-edit-tx]").forEach(row=>{
