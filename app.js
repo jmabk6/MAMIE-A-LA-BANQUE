@@ -1,7 +1,7 @@
 const STORAGE_KEY = "mamie-banque-v2";
 // Affichée en bas de l'Accueil : à changer à chaque mise en ligne (avec le ?v= d'index.html),
 // pour que JM voie si l'iPhone a bien la nouvelle version.
-const APP_VERSION = "Version du 03/11 à 10 h 19";
+const APP_VERSION = "Version du 03/11 à 10 h 34";
 const STORAGE_PREFIX = "mamie-banque";
 const BACKUP_PREFIX = "mamie-banque-backup-";
 
@@ -880,11 +880,14 @@ function cumulSince(key, scope){
 }
 // ---------- Mois (Global) : prévu, dépensé, économisé ----------
 // Même calcul que le reste à dépenser de l'Accueil, fait pour un mois donné, sur les deux comptes :
-// prévu = recettes − prélèvements mensuels (montant réel du mois) − parts mises de côté ;
-// dépensé = dépenses hors récurrents (sans les retraits au distributeur ni les virements entre comptes).
-const EXCEPTIONAL_CATEGORY="EXCEPTIONNELLE";
+// prévu = recettes − prélèvements récurrents mensuels (montant réel du mois) − parts mises de côté ;
+// dépensé = tout le reste : dépenses et prélèvements non récurrents (ex. un chèque ajouté au pointage
+// du relevé, saisi en « Prélèvement »), sans les retraits au distributeur ni les virements entre comptes.
 let budgetWithExceptional=true; // case « avec les exceptionnelles » : une seule pour tous les mois, simple vue
-function isExceptional(t){ return String(t.category||"").trim().toUpperCase()===EXCEPTIONAL_CATEGORY; }
+// Catégorie « Exceptionnel », « Exceptionnelle(s) », avec ou sans majuscules ni accents.
+function isExceptional(t){
+  return String(t.category||"").normalize("NFD").replace(/[̀-ͯ]/g,"").trim().toUpperCase().startsWith("EXCEPTIONNEL");
+}
 function monthBudget(key){
   const m=Number(key.slice(5))-1;
   const sum=list=>list.reduce((s,t)=>s+(Number(t.amount)||0),0);
@@ -900,10 +903,9 @@ function monthBudget(key){
     : actualOrExpectedRecurringAmount(r,monthTx,m);
   const recettes=sum(recurring.filter(r=>r.type==="recette" && monthApplies(r,m)).map(r=>({amount:amountOf(r)}))) +
     sum(monthTx.filter(t=>t.type==="recette" && !isLinked(t)));
-  const prelevements=sum(recurring.filter(r=>r.type==="prelevement" && (r.frequency||"monthly")==="monthly").map(r=>({amount:amountOf(r)}))) +
-    sum(monthTx.filter(t=>t.type==="prelevement" && !isLinked(t)));
+  const prelevements=sum(recurring.filter(r=>r.type==="prelevement" && (r.frequency||"monthly")==="monthly").map(r=>({amount:amountOf(r)})));
   const provisions=recurring.reduce((s,r)=>s+monthlyProvision(r),0);
-  const depenses=monthTx.filter(t=>t.type==="depense");
+  const depenses=monthTx.filter(t=>t.type==="depense" || (t.type==="prelevement" && !isLinked(t)));
   const exceptional=sum(depenses.filter(isExceptional));
   const prevu=recettes-prelevements-provisions;
   const depense=sum(depenses)-(budgetWithExceptional?0:exceptional);
