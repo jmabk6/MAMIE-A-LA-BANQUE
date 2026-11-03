@@ -1,7 +1,7 @@
 const STORAGE_KEY = "mamie-banque-v2";
 // Affichée en bas de l'Accueil : à changer à chaque mise en ligne (avec le ?v= d'index.html),
 // pour que JM voie si l'iPhone a bien la nouvelle version.
-const APP_VERSION = "Version du 02/11 à 22 h 31";
+const APP_VERSION = "Version du 03/11 à 10 h 00";
 const STORAGE_PREFIX = "mamie-banque";
 const BACKUP_PREFIX = "mamie-banque-backup-";
 
@@ -658,13 +658,17 @@ function addView(defaultType="depense", unknown=false, editId=null, defaultDate=
   const payment = tx.payment || "Carte bancaire";
   const formAccount = ACCOUNTS[defaultAccount] ? defaultAccount : currentAccount;
   const payments=["Carte bancaire","Prélèvement","Virement","Espèces","Retrait d'espèces","Chèque"];
+  // Mois validé : seuls le nom et la catégorie restent modifiables.
+  const lockedSide = existing ? lockedSideOf(existing) : null;
+  const ro = lockedSide ? "disabled" : "";
 
   return `
     <form id="transactionForm" class="card form-card" data-edit-id="${existing ? escapeHtml(String(existing.id)) : ""}">
+      ${lockedSide ? `<div class="notice orange">${escapeHtml(lockedEditMessage(lockedSide))}</div>` : ""}
       <div class="segmented" id="typeSegment">
-        <button type="button" data-type="depense" class="${type==="depense"?"active":""}">Dépense</button>
-        <button type="button" data-type="recette" class="${type==="recette"?"active":""}">Recette</button>
-        <button type="button" data-type="prelevement" class="${type==="prelevement"?"active":""}">Prélèvement</button>
+        <button type="button" data-type="depense" class="${type==="depense"?"active":""}" ${ro}>Dépense</button>
+        <button type="button" data-type="recette" class="${type==="recette"?"active":""}" ${ro}>Recette</button>
+        <button type="button" data-type="prelevement" class="${type==="prelevement"?"active":""}" ${ro}>Prélèvement</button>
         ${existing ? "" : `<button type="button" data-type="transfert">Virement vers ${ACCOUNTS[otherAccount(formAccount)]}</button>`}
       </div>
 
@@ -677,7 +681,7 @@ function addView(defaultType="depense", unknown=false, editId=null, defaultDate=
       <input type="hidden" id="type" value="${escapeHtml(type)}" />
 
       <label>Date
-        <input id="date" type="date" required value="${escapeHtml(tx.date || "")}" />
+        <input id="date" type="date" required value="${escapeHtml(tx.date || "")}" ${ro} />
       </label>
 
       <label>Enseigne / Libellé
@@ -689,11 +693,11 @@ function addView(defaultType="depense", unknown=false, editId=null, defaultDate=
       <label>Montant TTC
         <input id="amount" type="number" inputmode="decimal" step="0.01" min="0" required
                value="${tx.amount === "" ? "" : escapeHtml(String(tx.amount))}"
-               placeholder="0,00" />
+               placeholder="0,00" ${ro} />
       </label>
 
       <label>Mode de paiement
-        <select id="payment">
+        <select id="payment" ${ro}>
           ${payments.map(p=>`<option ${p===payment?"selected":""}>${escapeHtml(p)}</option>`).join("")}
         </select>
       </label>
@@ -701,15 +705,14 @@ function addView(defaultType="depense", unknown=false, editId=null, defaultDate=
       ${tx.transferId ? "" : `<label id="categoryField">Catégorie ${categorySelectHtml("category", tx.category||"")}</label>`}
 
       <label class="check-row">
-        <input id="unknown" type="checkbox" ${tx.unknown ? "checked" : ""} />
+        <input id="unknown" type="checkbox" ${tx.unknown ? "checked" : ""} ${ro} />
         Non prévu (ajouté au pointage du relevé)
       </label>
 
-      ${existing && txLocked(existing) ? `<div class="notice orange">${escapeHtml(lockedMessage(existing))}</div>` : ""}
-      <button class="primary" type="submit" ${existing && txLocked(existing) ? "disabled" : ""}>
+      <button class="primary" type="submit">
         ${existing ? "Enregistrer les modifications" : "Enregistrer"}
       </button>
-      ${existing && !txLocked(existing) ? `<button class="secondary-btn danger transaction-delete-btn" type="button"
+      ${existing && !lockedSide ? `<button class="secondary-btn danger transaction-delete-btn" type="button"
               data-transaction-delete="1" style="margin-top:10px">
         Supprimer cette opération
       </button>` : ""}
@@ -748,6 +751,17 @@ function isMonthLocked(acc, key){ return !!monthValidation(acc, key); }
 function txLocked(t, date=t.date){ return isMonthLocked(accountOf(t), String(date||"").slice(0,7)); }
 function lockedMessage(t, date=t.date){
   return `${monthTitle(String(date).slice(0,7))} est validé et verrouillé sur le ${ACCOUNTS[accountOf(t)]}.\nDéverrouille-le d’abord dans l’onglet Relevé pour modifier ses opérations.`;
+}
+// Opération dans un mois validé (ou l'autre côté de son virement entre comptes) : le nom et
+// la catégorie restent modifiables, car ils ne changent pas le solde ; le reste est verrouillé.
+function lockedSideOf(t){
+  if(!t) return null;
+  if(txLocked(t)) return t;
+  if(!t.transferId) return null;
+  return state.transactions.find(x=>x.transferId===t.transferId && x!==t && txLocked(x)) || null;
+}
+function lockedEditMessage(t){
+  return `${monthTitle(String(t.date).slice(0,7))} est validé sur le ${ACCOUNTS[accountOf(t)]} : tu peux changer le nom et la catégorie. Pour le reste, déverrouille le mois dans l’onglet Relevé.`;
 }
 function lastValidatedBefore(acc, key){
   const months=Object.keys((state.monthStatus||{})[acc]||{}).filter(k=>k<key && isMonthLocked(acc,k)).sort();
@@ -1660,6 +1674,14 @@ function bind(){
 
       if(editId!==null){
         const before=state.transactions.find(x=>String(x.id)===String(editId));
+        // Mois validé : on n'enregistre que le nom et la catégorie, le solde ne bouge pas.
+        if(lockedSideOf(before)){
+          before.label=normalizeLabel(form.querySelector("#label").value);
+          if(form.querySelector("#category")) before.category=form.querySelector("#category").value;
+          save("avant-modification-depense");
+          render(transactionReturnView || "home");
+          return;
+        }
         const partnerBefore=before && before.transferId ? state.transactions.find(x=>x.transferId===before.transferId && String(x.id)!==String(before.id)) : null;
         const blocked=[before,partnerBefore].filter(Boolean).find(t=>txLocked(t) || txLocked(t,newDate));
         if(blocked){ alert(lockedMessage(blocked, txLocked(blocked)?blocked.date:newDate)); return; }
